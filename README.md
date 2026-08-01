@@ -1,6 +1,6 @@
 # Ali Fadda — alifadda.me
 
-Personal site built with [Astro Theme Cactus](https://github.com/chrismwilliams/astro-theme-cactus) (same base as [refaat.dev](https://refaat.dev/)).
+Personal site built with [Astro Theme Cactus](https://github.com/chrismwilliams/astro-theme-cactus).
 
 ## Local development
 
@@ -35,18 +35,10 @@ Edit **only** `src/content/resume.md`, then:
 npm run resume:pdf
 ```
 
-That regenerates `public/Ali-Fadda-Resume.pdf`. Visiting `/resume` serves that PDF inline in the browser (same pattern as refaat.dev).
+That regenerates `public/Ali-Fadda-Resume.pdf`. Visiting `/resume` serves that PDF inline in the browser.
 
 ### Site identity
 
 - Name, URL, description: `src/site.config.ts`
 - Social icons: `src/components/SocialList.astro`
 - Home / About copy: `src/pages/index.astro`, `src/pages/about.astro`
-
-## Deploy
-
-1. Push to GitHub
-2. Import in Vercel
-3. Point GoDaddy DNS:
-   - `A @ → 76.76.21.21`
-   - keep or set `CNAME www → alifadda.me` (or `cname.vercel-dns.com`)
