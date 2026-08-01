@@ -1,0 +1,47 @@
+---
+import PageLayout from "@/layouts/Base.astro";
+
+const meta = {
+	description:
+		"About Ali Fadda — senior software backend engineer working across NestJS, Temporal, and AI products.",
+	title: "About",
+};
+---
+
+<PageLayout meta={meta}>
+	<h1 class="title mb-6">About</h1>
+	<div class="prose prose-sm prose-cactus max-w-none">
+		<p>
+			I'm <strong>Ali Fadda</strong>, a senior software backend engineer. Most of my work lives in
+			TypeScript and Node — NestJS services, event-driven systems, and lately AI product surfaces
+			built on Temporal, LLMs, and RAG.
+		</p>
+		<p>
+			I like taking ambiguous product goals and turning them into shipped systems: clear APIs,
+			observable workflows, and interfaces that don't hide the hard parts.
+		</p>
+		<h2>What I care about</h2>
+		<ul>
+			<li>Backend systems that stay understandable under growth</li>
+			<li>Clean architecture and domain modeling when complexity earns it</li>
+			<li>AI features that are useful in production, not just demos</li>
+			<li>Mentoring and raising the quality bar with the people around me</li>
+		</ul>
+		<h2>Recently</h2>
+		<p>
+			At Creativo I worked across AI media pipelines, social/ad automation, landing page generation,
+			and a brand RAG assistant. Before that I built backend systems at Boxit, VIWELL, and Taager —
+			Kafka, PostgreSQL, AWS, payments, and performance work that moved the needle.
+		</p>
+		<p>
+			Want the full timeline? See the <a href="/resume">resume</a> — it's generated from a single
+			Markdown source so updates stay in sync.
+		</p>
+		<p>
+			Reach me at
+			<a href="mailto:contact@alifadda.me">contact@alifadda.me</a>
+			or
+			<a href="https://linkedin.com/in/alifadda" rel="noreferrer" target="_blank">LinkedIn</a>.
+		</p>
+	</div>
+</PageLayout>

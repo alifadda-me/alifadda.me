@@ -1,0 +1,49 @@
+{
+	"installCommand": "npm install && npx playwright install chromium",
+	"framework": "astro",
+	"rewrites": [
+		{ "source": "/resume", "destination": "/Ali-Fadda-Resume.pdf" },
+		{ "source": "/resume/", "destination": "/Ali-Fadda-Resume.pdf" }
+	],
+	"headers": [
+		{
+			"source": "/Ali-Fadda-Resume.pdf",
+			"headers": [
+				{
+					"key": "Content-Type",
+					"value": "application/pdf"
+				},
+				{
+					"key": "Content-Disposition",
+					"value": "inline; filename=\"Ali-Fadda-Resume.pdf\""
+				}
+			]
+		},
+		{
+			"source": "/resume",
+			"headers": [
+				{
+					"key": "Content-Type",
+					"value": "application/pdf"
+				},
+				{
+					"key": "Content-Disposition",
+					"value": "inline; filename=\"Ali-Fadda-Resume.pdf\""
+				}
+			]
+		},
+		{
+			"source": "/resume/",
+			"headers": [
+				{
+					"key": "Content-Type",
+					"value": "application/pdf"
+				},
+				{
+					"key": "Content-Disposition",
+					"value": "inline; filename=\"Ali-Fadda-Resume.pdf\""
+				}
+			]
+		}
+	]
+}

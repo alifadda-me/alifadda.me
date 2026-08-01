@@ -1,0 +1,46 @@
+---
+import { type CollectionEntry, getCollection } from "astro:content";
+import SocialList from "@/components/SocialList.astro";
+import PostPreview from "@/components/blog/PostPreview.astro";
+import { getAllPosts } from "@/data/post";
+import PageLayout from "@/layouts/Base.astro";
+import { collectionDateSort } from "@/utils/date";
+
+const MAX_POSTS = 10;
+const allPosts = await getAllPosts();
+const allPostsByDate = allPosts
+	.sort(collectionDateSort)
+	.slice(0, MAX_POSTS) as CollectionEntry<"post">[];
+---
+
+<PageLayout meta={{ title: "Home" }}>
+	<section>
+		<h1 class="title mb-6">Hey, I'm Ali 👋</h1>
+		<p class="mb-4">
+			Senior software backend engineer. I take rough direction from product or engineering leads and
+			ship it — NestJS APIs, Temporal workflows, LLM integrations, and the Angular UI when needed.
+		</p>
+		<p class="mb-4">
+			Most recently at Creativo (AI marketing on GCP/Firebase): media generation, social/ad
+			automation, landing pages, and a RAG assistant. Before that: backend systems at Boxit, VIWELL,
+			and Taager (Kafka, PostgreSQL, AWS). AWS Certified Cloud Practitioner.
+		</p>
+		<p class="mb-4">
+			This site is a minimal digital garden — notes on backend systems, AI product work, and what I'm
+			learning.
+		</p>
+		<SocialList />
+	</section>
+	<section class="mt-16">
+		<h2 class="title text-accent mb-6 text-xl"><a href="/posts/">Posts</a></h2>
+		<ul class="space-y-4" role="list">
+			{
+				allPostsByDate.map((p) => (
+					<li class="grid gap-2 sm:grid-cols-[auto_1fr]">
+						<PostPreview post={p} />
+					</li>
+				))
+			}
+		</ul>
+	</section>
+</PageLayout>
