@@ -6,7 +6,7 @@
 		"dev": "astro dev",
 		"start": "astro dev",
 		"resume:pdf": "node scripts/generate-resume-pdf.mjs",
-		"build": "npm run resume:pdf && astro build",
+		"build": "astro build",
 		"postbuild": "pagefind --site dist",
 		"preview": "astro preview",
 		"lint": "biome lint .",

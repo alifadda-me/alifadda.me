@@ -1,5 +1,4 @@
 {
-	"installCommand": "npm install && npx playwright install chromium",
 	"framework": "astro",
 	"rewrites": [
 		{ "source": "/resume", "destination": "/Ali-Fadda-Resume.pdf" },

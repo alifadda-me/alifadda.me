@@ -35,7 +35,7 @@ Edit **only** `src/content/resume.md`, then:
 npm run resume:pdf
 ```
 
-That regenerates `public/Ali-Fadda-Resume.pdf`. Visiting `/resume` serves that PDF inline in the browser.
+That regenerates `public/Ali-Fadda-Resume.pdf`. Commit the updated PDF (Vercel can’t run Playwright), then push. Visiting `/resume` serves that PDF inline in the browser.
 
 ### Site identity
 
