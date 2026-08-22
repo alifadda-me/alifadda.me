@@ -33,7 +33,7 @@ export function whatsappHref(lang: Lang = "en") {
 export const pageCopy = {
 	ar: {
 		author: "علي فضه",
-		bio: "مهندس برمجيات أول متخصص في الـ Backend. أبني أنظمة NestJS وTemporal وتكاملات الذكاء الاصطناعي، وأوصلها إلى الإنتاج.",
+		bio: "Software Engineer ببني software وAI products من الفكرة لحد production.",
 		description:
 			"روابط علي فضه — السيرة الذاتية، واتساب، تيليجرام، لينكدإن، والمزيد في مكان واحد.",
 		langLabel: "العربية",
@@ -43,7 +43,7 @@ export const pageCopy = {
 	},
 	en: {
 		author: "Ali Fadda",
-		bio: "Senior software backend engineer. NestJS, Temporal, LLM integrations, and systems that ship.",
+		bio: "Software Engineer building software & AI products from idea to production.",
 		description:
 			"Links for Ali Fadda — resume, WhatsApp, Telegram, LinkedIn, and more in one place.",
 		langLabel: "English",
@@ -131,6 +131,15 @@ export const profileLinks: ProfileLink[] = [
 		href: phoneHref,
 		icon: "mdi:phone-outline",
 		title: { ar: "اتصل بي", en: "Call me" },
+	},
+	{
+		description: {
+			ar: "ادفع عبر إنستا باي",
+			en: "Pay via InstaPay",
+		},
+		href: "https://ipn.eg/S/ali.fadda/instapay/3J3l2a",
+		icon: "mdi:cash",
+		title: { ar: "إنستا باي", en: "InstaPay" },
 	},
 	{
 		description: {
