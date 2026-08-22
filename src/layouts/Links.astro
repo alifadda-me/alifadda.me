@@ -1,0 +1,28 @@
+---
+import BaseHead from "@/components/BaseHead.astro";
+import ThemeProvider from "@/components/ThemeProvider.astro";
+import { siteConfig } from "@/site.config";
+import type { SiteMeta } from "@/types";
+
+interface Props {
+	meta: SiteMeta;
+}
+
+const {
+	meta: { articleDate, description = siteConfig.description, ogImage, title },
+} = Astro.props;
+---
+
+<html class="scroll-smooth" lang={siteConfig.lang}>
+	<head>
+		<BaseHead articleDate={articleDate} description={description} ogImage={ogImage} title={title} />
+	</head>
+	<body
+		class="bg-global-bg text-global-text min-h-dvh font-mono text-sm font-normal antialiased"
+	>
+		<ThemeProvider />
+		<main class="min-h-dvh" id="main">
+			<slot />
+		</main>
+	</body>
+</html>
