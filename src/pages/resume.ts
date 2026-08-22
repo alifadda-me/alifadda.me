@@ -22,7 +22,7 @@ export const GET: APIRoute = () => {
 	const pdfPath = path.join(process.cwd(), "public", PDF_NAME);
 	const pdf = fs.readFileSync(pdfPath);
 
-	return new Response(pdf, {
+	return new Response(new Uint8Array(pdf), {
 		headers: pdfHeaders(pdf.byteLength),
 	});
 };
