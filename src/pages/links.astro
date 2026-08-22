@@ -1,21 +1,12 @@
 ---
 import { Icon } from "astro-icon/components";
 import PageLayout from "@/layouts/Links.astro";
-import { profileLinks, socialIcons } from "@/data/links";
-import { siteConfig } from "@/site.config";
+import { isExternal, pageCopy, profileLinks, socialIcons, type Lang } from "@/data/links";
 
-const meta = {
-	description:
-		"Links for Ali Fadda — resume, LinkedIn, GitHub, Facebook, and email. One place for everything I share.",
-	title: "Links",
-};
-
-function isExternal(href: string) {
-	return href.startsWith("http") || href.startsWith("mailto:");
-}
+const langs: Lang[] = ["en", "ar"];
 ---
 
-<PageLayout meta={meta}>
+<PageLayout>
 	<section
 		class="mx-auto flex w-full max-w-[26rem] flex-col items-center px-4 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-center sm:px-6 sm:pt-16"
 	>
@@ -26,79 +17,162 @@ function isExternal(href: string) {
 			src="/icon.svg"
 			width="96"
 		/>
-		<h1 class="text-accent-2 mb-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-			{siteConfig.author}
-		</h1>
-		<p class="text-global-text/80 mb-7 max-w-[22rem] text-pretty text-[0.9375rem] leading-relaxed sm:mb-8 sm:text-base">
-			Senior software backend engineer. NestJS, Temporal, LLM integrations, and systems that ship.
-		</p>
 
-		<ul class="mb-8 flex items-center justify-center gap-1 sm:mb-10 sm:gap-2" role="list">
-			{
-				socialIcons.map(({ friendlyName, href, icon }) => (
-					<li>
-						<a
-							class="text-accent-2 hover:text-link active:text-link inline-flex size-12 items-center justify-center touch-manipulation rounded-md transition-colors"
-							href={href}
-							rel={href.startsWith("http") ? "noreferrer me" : "me"}
-							target={href.startsWith("http") ? "_blank" : undefined}
+		{
+			langs.map((lang) => {
+				const copy = pageCopy[lang];
+				const isArabic = lang === "ar";
+				return (
+					<div class={`lang-${lang} w-full`}>
+						<h1
+							class:list={[
+								"text-accent-2 mb-2 font-semibold tracking-tight",
+								isArabic ? "text-[1.75rem] leading-snug sm:text-3xl" : "text-2xl sm:text-3xl",
+							]}
 						>
-							<Icon aria-hidden="true" class="size-7" focusable="false" name={icon} />
-							<span class="sr-only">{friendlyName}</span>
-						</a>
-					</li>
-				))
-			}
-		</ul>
+							{copy.author}
+						</h1>
+						<p
+							class:list={[
+								"text-global-text/80 mx-auto mb-7 max-w-[22rem] text-pretty leading-relaxed sm:mb-8",
+								isArabic
+									? "text-[0.98rem] leading-[1.85] sm:text-[1.05rem]"
+									: "text-[0.9375rem] sm:text-base",
+							]}
+						>
+							{copy.bio}
+						</p>
+					</div>
+				);
+			})
+		}
 
-		<ul class="flex w-full flex-col gap-3" role="list">
+		<ul class="mb-8 flex flex-wrap items-center justify-center gap-1 sm:mb-10 sm:gap-2" role="list">
 			{
-				profileLinks.map(({ description, href, icon, title }) => {
-					const external = isExternal(href);
+				socialIcons.map(({ friendlyName, href, hrefByLang, icon }) => {
+					if (hrefByLang) {
+						return (
+							<li>
+								{langs.map((lang) => (
+									<a
+										class:list={[
+											`lang-${lang}`,
+											"text-accent-2 hover:text-link active:text-link inline-flex size-12 items-center justify-center touch-manipulation rounded-md transition-colors",
+										]}
+										href={hrefByLang[lang] ?? href}
+										rel="noreferrer me"
+										target="_blank"
+									>
+										<Icon aria-hidden="true" class="size-7" focusable="false" name={icon} />
+										<span class="sr-only">{friendlyName[lang]}</span>
+									</a>
+								))}
+							</li>
+						);
+					}
+
 					return (
 						<li>
 							<a
-								class:list={[
-									"group border-accent-2/25 hover:border-accent hover:bg-accent/5 active:bg-accent/10",
-									"flex min-h-14 w-full items-center gap-3 border border-dashed px-4 py-3.5 text-start",
-									"touch-manipulation transition-[border-color,background-color] duration-150",
-									"focus-visible:outline-accent focus-visible:outline-2 focus-visible:outline-offset-2",
-									"sm:min-h-16 sm:gap-3.5 sm:px-5 sm:py-4",
-								]}
-								data-astro-prefetch={!external ? true : undefined}
+								class="text-accent-2 hover:text-link active:text-link inline-flex size-12 items-center justify-center touch-manipulation rounded-md transition-colors"
 								href={href}
-								rel={external && href.startsWith("http") ? "noreferrer" : undefined}
+								rel={href.startsWith("http") ? "noreferrer me" : "me"}
 								target={href.startsWith("http") ? "_blank" : undefined}
 							>
-								<span class="text-accent shrink-0">
-									<Icon
-										aria-hidden="true"
-										class="size-6 sm:size-7"
-										focusable="false"
-										name={icon}
-									/>
-								</span>
-								<span class="min-w-0 flex-1">
-									<span class="text-accent-2 block text-[0.9375rem] font-semibold sm:text-base">
-										{title}
-									</span>
-									{description && (
-										<span class="text-global-text/65 mt-0.5 block text-[0.75rem] leading-snug sm:text-xs">
-											{description}
-										</span>
-									)}
-								</span>
-								<span
-									aria-hidden="true"
-									class="text-accent-2/35 group-hover:text-accent group-active:text-accent ms-auto shrink-0 text-lg transition-colors"
-								>
-									→
-								</span>
+								<Icon aria-hidden="true" class="size-7" focusable="false" name={icon} />
+								<span class="sr-only lang-en">{friendlyName.en}</span>
+								<span class="sr-only lang-ar">{friendlyName.ar}</span>
 							</a>
 						</li>
 					);
 				})
 			}
 		</ul>
+
+		<ul class="flex w-full flex-col gap-3" role="list">
+			{
+				profileLinks.map(({ description, href, hrefByLang, icon, title }) => (
+					<li>
+						{langs.map((lang) => {
+							const resolvedHref = hrefByLang?.[lang] ?? href;
+							const external = isExternal(resolvedHref);
+							const isArabic = lang === "ar";
+							return (
+								<a
+									class:list={[
+										`lang-${lang}`,
+										"group border-accent-2/25 hover:border-accent hover:bg-accent/5 active:bg-accent/10",
+										"flex min-h-14 w-full items-center gap-3 border border-dashed px-4 py-3.5 text-start",
+										"touch-manipulation transition-[border-color,background-color] duration-150",
+										"focus-visible:outline-accent focus-visible:outline-2 focus-visible:outline-offset-2",
+										"sm:min-h-16 sm:gap-3.5 sm:px-5 sm:py-4",
+									]}
+									data-astro-prefetch={!external ? true : undefined}
+									href={resolvedHref}
+									rel={external && resolvedHref.startsWith("http") ? "noreferrer" : undefined}
+									target={resolvedHref.startsWith("http") ? "_blank" : undefined}
+								>
+									<span class="text-accent shrink-0">
+										<Icon
+											aria-hidden="true"
+											class="size-6 sm:size-7"
+											focusable="false"
+											name={icon}
+										/>
+									</span>
+									<span class="min-w-0 flex-1">
+										<span
+											class:list={[
+												"text-accent-2 block font-semibold",
+												isArabic
+													? "text-[1rem] leading-snug sm:text-[1.05rem]"
+													: "text-[0.9375rem] sm:text-base",
+											]}
+										>
+											{title[lang]}
+										</span>
+										<span
+											class:list={[
+												"text-global-text/65 mt-0.5 block leading-snug",
+												isArabic
+													? "text-[0.8rem] sm:text-[0.8125rem]"
+													: "text-[0.75rem] sm:text-xs",
+											]}
+										>
+											{description[lang]}
+										</span>
+									</span>
+									<span
+										aria-hidden="true"
+										class="text-accent-2/35 group-hover:text-accent group-active:text-accent ms-auto shrink-0 text-lg transition-colors rtl:-scale-x-100"
+									>
+										→
+									</span>
+								</a>
+							);
+						})}
+					</li>
+				))
+			}
+		</ul>
+
+		<div class="mt-10 flex w-full items-center justify-center">
+			<a
+				class="lang-en text-accent-2/60 hover:text-accent inline-flex min-h-10 items-center px-3 text-xs touch-manipulation transition-colors"
+				href="/links?lang=ar"
+				hreflang="ar"
+				lang="ar"
+			>
+				{pageCopy.en.switchTo}
+			</a>
+			<a
+				class="lang-ar text-accent-2/60 hover:text-accent inline-flex min-h-10 items-center px-3 text-xs touch-manipulation transition-colors"
+				href="/links"
+				hreflang="en"
+				lang="en"
+			>
+				{pageCopy.ar.switchTo}
+			</a>
+		</div>
 	</section>
 </PageLayout>

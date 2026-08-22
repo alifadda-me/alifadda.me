@@ -1,25 +1,56 @@
 ---
 import BaseHead from "@/components/BaseHead.astro";
 import ThemeProvider from "@/components/ThemeProvider.astro";
+import { pageCopy } from "@/data/links";
 import { siteConfig } from "@/site.config";
-import type { SiteMeta } from "@/types";
 
-interface Props {
-	meta: SiteMeta;
-}
-
-const {
-	meta: { articleDate, description = siteConfig.description, ogImage, title },
-} = Astro.props;
+const en = pageCopy.en;
 ---
 
-<html class="scroll-smooth" lang={siteConfig.lang}>
+<html class="scroll-smooth" dir="ltr" lang={siteConfig.lang}>
 	<head>
-		<BaseHead articleDate={articleDate} description={description} ogImage={ogImage} title={title} />
+		<script is:inline>
+			(function () {
+				var ar = new URLSearchParams(location.search).get("lang") === "ar";
+				var root = document.documentElement;
+				root.dataset.lang = ar ? "ar" : "en";
+				root.lang = ar ? "ar" : "en-GB";
+				root.dir = ar ? "rtl" : "ltr";
+				root.classList.toggle("links-ar", ar);
+			})();
+		</script>
+		<BaseHead description={en.description} title={en.title} />
+		<script is:inline>
+			(function () {
+				if (document.documentElement.dataset.lang !== "ar") return;
+				document.title = "روابط • Ali Fadda";
+				var desc = document.querySelector('meta[name="description"]');
+				if (desc) {
+					desc.setAttribute(
+						"content",
+						"روابط علي فضه — السيرة الذاتية، واتساب، تيليجرام، لينكدإن، والمزيد في مكان واحد.",
+					);
+				}
+			})();
+		</script>
+		<style is:inline>
+			html[data-lang="en"] .lang-ar {
+				display: none !important;
+			}
+			html[data-lang="ar"] .lang-en {
+				display: none !important;
+			}
+			html.links-ar body {
+				font-family:
+					system-ui,
+					-apple-system,
+					"Segoe UI",
+					Tahoma,
+					sans-serif;
+			}
+		</style>
 	</head>
-	<body
-		class="bg-global-bg text-global-text min-h-dvh font-mono text-sm font-normal antialiased"
-	>
+	<body class="bg-global-bg text-global-text min-h-dvh font-mono text-sm font-normal antialiased">
 		<ThemeProvider />
 		<main class="min-h-dvh" id="main">
 			<slot />

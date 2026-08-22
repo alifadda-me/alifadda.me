@@ -1,49 +1,93 @@
+export type Lang = "en" | "ar";
+
+export type LocalizedText = Record<Lang, string>;
+
 export type SocialIconLink = {
-	friendlyName: string;
+	friendlyName: LocalizedText;
 	href: string;
+	hrefByLang?: Partial<Record<Lang, string>>;
 	icon: string;
 };
 
 export type ProfileLink = {
-	description?: string;
+	description: LocalizedText;
 	href: string;
+	hrefByLang?: Partial<Record<Lang, string>>;
 	icon: string;
-	title: string;
+	title: LocalizedText;
 };
 
-const whatsappMessage = encodeURIComponent("Hello Ali, Assalamu Alaikum");
-const whatsappHref = `https://wa.me/201065093575?text=${whatsappMessage}`;
-const telegramHref = "https://t.me/alifadda1";
+export const phoneDisplay = "+20 106 509 3575";
+export const phoneHref = "tel:+201065093575";
+export const telegramHref = "https://t.me/alifadda1";
+
+const whatsappMessage: LocalizedText = {
+	ar: "مرحبا علي، السلام عليكم",
+	en: "Hello Ali, Assalamu Alaikum",
+};
+
+export function whatsappHref(lang: Lang = "en") {
+	return `https://wa.me/201065093575?text=${encodeURIComponent(whatsappMessage[lang])}`;
+}
+
+export const pageCopy = {
+	ar: {
+		author: "علي فضه",
+		bio: "مهندس برمجيات أول متخصص في الـ Backend. أبني أنظمة NestJS وTemporal وتكاملات الذكاء الاصطناعي، وأوصلها إلى الإنتاج.",
+		description:
+			"روابط علي فضه — السيرة الذاتية، واتساب، تيليجرام، لينكدإن، والمزيد في مكان واحد.",
+		langLabel: "العربية",
+		switchTo: "English",
+		switchToHref: "/links",
+		title: "روابط",
+	},
+	en: {
+		author: "Ali Fadda",
+		bio: "Senior software backend engineer. NestJS, Temporal, LLM integrations, and systems that ship.",
+		description:
+			"Links for Ali Fadda — resume, WhatsApp, Telegram, LinkedIn, and more in one place.",
+		langLabel: "English",
+		switchTo: "العربية",
+		switchToHref: "/links?lang=ar",
+		title: "Links",
+	},
+} as const;
 
 /** Icon row under the bio — keep this short. */
 export const socialIcons: SocialIconLink[] = [
 	{
-		friendlyName: "GitHub",
+		friendlyName: { ar: "جيت هب", en: "GitHub" },
 		href: "https://github.com/alifadda-me",
 		icon: "mdi:github",
 	},
 	{
-		friendlyName: "LinkedIn",
+		friendlyName: { ar: "لينكدإن", en: "LinkedIn" },
 		href: "https://www.linkedin.com/in/alifadda/",
 		icon: "mdi:linkedin",
 	},
 	{
-		friendlyName: "Facebook",
+		friendlyName: { ar: "فيسبوك", en: "Facebook" },
 		href: "https://www.facebook.com/ali.fadda.81787/",
 		icon: "mdi:facebook",
 	},
 	{
-		friendlyName: "WhatsApp",
-		href: whatsappHref,
+		friendlyName: { ar: "واتساب", en: "WhatsApp" },
+		href: whatsappHref("en"),
+		hrefByLang: { ar: whatsappHref("ar"), en: whatsappHref("en") },
 		icon: "mdi:whatsapp",
 	},
 	{
-		friendlyName: "Telegram",
+		friendlyName: { ar: "تيليجرام", en: "Telegram" },
 		href: telegramHref,
 		icon: "mdi:telegram",
 	},
 	{
-		friendlyName: "Email",
+		friendlyName: { ar: "الهاتف", en: "Phone" },
+		href: phoneHref,
+		icon: "mdi:phone",
+	},
+	{
+		friendlyName: { ar: "البريد", en: "Email" },
 		href: "mailto:contact@alifadda.me",
 		icon: "mdi:email",
 	},
@@ -55,45 +99,77 @@ export const socialIcons: SocialIconLink[] = [
  */
 export const profileLinks: ProfileLink[] = [
 	{
-		description: "Experience, skills, and contact details",
+		description: {
+			ar: "الخبرات والمهارات وبيانات التواصل",
+			en: "Experience, skills, and contact details",
+		},
 		href: "/resume",
 		icon: "mdi:file-document-outline",
-		title: "Resume",
+		title: { ar: "السيرة الذاتية", en: "Resume" },
 	},
 	{
-		description: "Say hello — opens a chat",
-		href: whatsappHref,
+		description: {
+			ar: "رسالة جاهزة — مرحبا علي، السلام عليكم",
+			en: "Say hello — opens a chat",
+		},
+		href: whatsappHref("en"),
+		hrefByLang: { ar: whatsappHref("ar"), en: whatsappHref("en") },
 		icon: "mdi:whatsapp",
-		title: "WhatsApp",
+		title: { ar: "واتساب", en: "WhatsApp" },
 	},
 	{
-		description: "@alifadda1",
+		description: { ar: "@alifadda1", en: "@alifadda1" },
 		href: telegramHref,
 		icon: "mdi:telegram",
-		title: "Telegram",
+		title: { ar: "تيليجرام", en: "Telegram" },
 	},
 	{
-		description: "Work history and professional updates",
+		description: {
+			ar: phoneDisplay,
+			en: phoneDisplay,
+		},
+		href: phoneHref,
+		icon: "mdi:phone-outline",
+		title: { ar: "اتصل بي", en: "Call me" },
+	},
+	{
+		description: {
+			ar: "الخبرة المهنية والتحديثات",
+			en: "Work history and professional updates",
+		},
 		href: "https://www.linkedin.com/in/alifadda/",
 		icon: "mdi:linkedin",
-		title: "LinkedIn",
+		title: { ar: "لينكدإن", en: "LinkedIn" },
 	},
 	{
-		description: "Code and open-source work",
+		description: {
+			ar: "الأكواد والمشاريع المفتوحة",
+			en: "Code and open-source work",
+		},
 		href: "https://github.com/alifadda-me",
 		icon: "mdi:github",
-		title: "GitHub",
+		title: { ar: "جيت هب", en: "GitHub" },
 	},
 	{
-		description: "Personal updates and posts",
+		description: {
+			ar: "تحديثات ومنشورات شخصية",
+			en: "Personal updates and posts",
+		},
 		href: "https://www.facebook.com/ali.fadda.81787/",
 		icon: "mdi:facebook",
-		title: "Facebook",
+		title: { ar: "فيسبوك", en: "Facebook" },
 	},
 	{
-		description: "contact@alifadda.me",
+		description: {
+			ar: "contact@alifadda.me",
+			en: "contact@alifadda.me",
+		},
 		href: "mailto:contact@alifadda.me",
 		icon: "mdi:email-outline",
-		title: "Email",
+		title: { ar: "البريد الإلكتروني", en: "Email" },
 	},
 ];
+
+export function isExternal(href: string) {
+	return href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
+}
