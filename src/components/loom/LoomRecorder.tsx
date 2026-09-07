@@ -37,7 +37,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
 	const [hasDisplayMediaSupport, setHasDisplayMediaSupport] = useState<boolean>(true);
-	const lastRecordedRef = useRef<{ blob: Blob; durationSeconds: number; mimeType: string; hasAudio: boolean } | null>(null);
+	const lastRecordedRef = useRef<{
+		blob: Blob;
+		durationSeconds: number;
+		mimeType: string;
+		hasAudio: boolean;
+		audioBlob?: Blob | undefined;
+		audioMimeType?: string | undefined;
+	} | null>(null);
 
 	useEffect(() => {
 		if (typeof navigator !== "undefined") {
@@ -450,12 +457,21 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		setElapsedSeconds(0);
 	};
 
-	const uploadVideoBlob = async (blob: Blob, durationSeconds: number, mimeType: string, hasAudio = true) => {
+	const uploadVideoBlob = async (
+		blob: Blob,
+		durationSeconds: number,
+		mimeType: string,
+		hasAudio = true,
+		audioBlob?: Blob,
+		audioMimeType?: string,
+	) => {
 		setPhase("uploading");
-		setUploadProgress(20);
+		setUploadProgress(15);
 
 		// 1. Request Presigned Upload URL with user-chosen title and accurate detected MIME type
 		const detectedMime = mimeType || blob.type || "video/webm";
+		const detectedAudioMime = audioMimeType || audioBlob?.type || (detectedMime.includes("mp4") ? "audio/mp4" : "audio/webm");
+
 		const initRes = await fetch("/api/loom/upload-url", {
 			method: "POST",
 			headers: {
@@ -465,6 +481,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			body: JSON.stringify({
 				title: videoTitle.trim() || undefined,
 				mimeType: detectedMime,
+				audioMimeType: detectedAudioMime,
 			}),
 		});
 
@@ -473,9 +490,9 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			throw new Error(errorData.error || "Failed to initialize upload. Ensure RECORD_SECRET matches.");
 		}
 
-		const { videoId, uploadUrl, key } = await initRes.json();
+		const { videoId, uploadUrl, key, audioUploadUrl, audioKey } = await initRes.json();
 		setCreatedVideoId(videoId);
-		setUploadProgress(50);
+		setUploadProgress(40);
 
 		// Under 4.0MB: Upload directly through same-origin proxy
 		// Over 4.0MB: Upload via presigned PUT to R2
@@ -545,6 +562,52 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			}
 		}
 
+		setUploadProgress(70);
+
+		// 2. Upload companion lightweight audio track if present (for 1-hour Whisper AI transcription)
+		let uploadedAudioKey: string | undefined = undefined;
+		if (hasAudio && audioBlob && audioBlob.size > 0 && audioKey) {
+			try {
+				let audioUploaded = false;
+				if (audioBlob.size <= VERCEL_BODY_LIMIT) {
+					const audioProxyRes = await fetch(
+						`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(audioKey)}`,
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": detectedAudioMime,
+								"X-Record-Key": recordKey,
+							},
+							body: audioBlob,
+						},
+					);
+					if (audioProxyRes.ok) {
+						audioUploaded = true;
+					}
+				}
+
+				if (!audioUploaded && audioUploadUrl) {
+					const audioDirectRes = await fetch(audioUploadUrl, {
+						method: "PUT",
+						headers: {
+							"Content-Type": detectedAudioMime,
+						},
+						body: audioBlob,
+					});
+					if (audioDirectRes.ok) {
+						audioUploaded = true;
+					}
+				}
+
+				if (audioUploaded) {
+					uploadedAudioKey = audioKey;
+				}
+			} catch (audioUploadErr) {
+				console.warn("[LoomRecorder] Companion audio upload notice:", audioUploadErr);
+				// Non-fatal: AI pipeline falls back gracefully
+			}
+		}
+
 		setUploadProgress(85);
 
 		// 3. Trigger Async AI Pipeline
@@ -559,6 +622,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				durationSeconds,
 				title: videoTitle.trim() || undefined,
 				hasAudio,
+				audioKey: uploadedAudioKey,
 			}),
 		}).catch((e) => {
 			console.warn("AI trigger notice:", e);
@@ -578,14 +642,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		if (!engine) return;
 
 		try {
-			const { blob, durationSeconds, mimeType, hasAudio } = await engine.stop();
+			const { blob, durationSeconds, mimeType, hasAudio, audioBlob, audioMimeType } = await engine.stop();
 
 			if (!blob || blob.size === 0) {
 				throw new Error("Recorded video is empty (0 bytes). Please verify camera permissions and record again.");
 			}
 
-			lastRecordedRef.current = { blob, durationSeconds, mimeType, hasAudio };
-			await uploadVideoBlob(blob, durationSeconds, mimeType, hasAudio);
+			lastRecordedRef.current = { blob, durationSeconds, mimeType, hasAudio, audioBlob, audioMimeType };
+			await uploadVideoBlob(blob, durationSeconds, mimeType, hasAudio, audioBlob, audioMimeType);
 		} catch (err: unknown) {
 			console.error("Upload error:", err);
 			setErrorMessage(err instanceof Error ? err.message : "Upload failed.");
@@ -994,11 +1058,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								type="button"
 								onClick={() => {
 									if (lastRecordedRef.current) {
-										const { blob, durationSeconds, mimeType, hasAudio } = lastRecordedRef.current;
-										uploadVideoBlob(blob, durationSeconds, mimeType, hasAudio).catch((err) => {
-											setErrorMessage(err instanceof Error ? err.message : "Upload retry failed.");
-											setPhase("error");
-										});
+										const { blob, durationSeconds, mimeType, hasAudio, audioBlob, audioMimeType } =
+											lastRecordedRef.current;
+										uploadVideoBlob(blob, durationSeconds, mimeType, hasAudio, audioBlob, audioMimeType).catch(
+											(err) => {
+												setErrorMessage(err instanceof Error ? err.message : "Upload retry failed.");
+												setPhase("error");
+											},
+										);
 									}
 								}}
 								className="w-full sm:w-auto rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2.5 text-xs font-mono font-bold text-neutral-950 transition-colors cursor-pointer"

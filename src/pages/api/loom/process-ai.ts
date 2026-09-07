@@ -35,7 +35,7 @@ export const POST: APIRoute = async ({ request, url }) => {
 
 	try {
 		const body = await request.json();
-		const { videoId, durationSeconds, title, hasAudio } = body;
+		const { videoId, durationSeconds, title, hasAudio, audioKey } = body;
 
 		if (!videoId || typeof videoId !== "string" || !UUID_REGEX.test(videoId)) {
 			return new Response(JSON.stringify({ error: "Invalid or missing videoId parameter" }), {
@@ -63,15 +63,21 @@ export const POST: APIRoute = async ({ request, url }) => {
 			cleanDuration,
 		);
 
-		let videoFileUrl = await getVideoPublicUrl(video.storage_path);
+		// Prioritize compact audio track if available (under 25MB for 1 hour recording)
+		let mediaToProcessUrl = "";
+		if (audioKey && typeof audioKey === "string") {
+			mediaToProcessUrl = await getVideoPublicUrl(audioKey);
+		} else {
+			mediaToProcessUrl = await getVideoPublicUrl(video.storage_path);
+		}
 
 		// If the url is relative (e.g. local fallback), prepend origin
-		if (videoFileUrl.startsWith("/")) {
-			videoFileUrl = `${url.origin}${videoFileUrl}`;
+		if (mediaToProcessUrl.startsWith("/")) {
+			mediaToProcessUrl = `${url.origin}${mediaToProcessUrl}`;
 		}
 
 		// Non-blocking AI execution
-		void processVideoAI(videoId, videoFileUrl, cleanTitle || video.title, hasAudio !== false).catch((err) => {
+		void processVideoAI(videoId, mediaToProcessUrl, cleanTitle || video.title, hasAudio !== false).catch((err) => {
 			console.error(`AI background pipeline error for ${videoId}:`, err);
 		});
 

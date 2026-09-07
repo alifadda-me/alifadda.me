@@ -34,6 +34,7 @@ export const POST: APIRoute = async ({ request }) => {
 	try {
 		let customTitle = "Recorded Video";
 		let clientMime = "video/webm";
+		let clientAudioMime = "";
 		try {
 			const body = await request.json();
 			if (body?.title && typeof body.title === "string" && body.title.trim()) {
@@ -42,6 +43,9 @@ export const POST: APIRoute = async ({ request }) => {
 			}
 			if (body?.mimeType && typeof body.mimeType === "string" && body.mimeType.trim()) {
 				clientMime = body.mimeType.trim();
+			}
+			if (body?.audioMimeType && typeof body.audioMimeType === "string") {
+				clientAudioMime = body.audioMimeType.trim();
 			}
 		} catch {
 			// No JSON body provided, fallback to defaults
@@ -53,6 +57,12 @@ export const POST: APIRoute = async ({ request }) => {
 		const videoId = crypto.randomUUID();
 		const key = `videos/${videoId}.${ext}`;
 
+		// Companion lightweight audio track for 1-hour Whisper AI transcription under 25MB
+		const isAudioMp4 = clientAudioMime.toLowerCase().includes("mp4") || isMp4;
+		const audioExt = isAudioMp4 ? "mp4" : "webm";
+		const standardAudioMime = isAudioMp4 ? "audio/mp4" : "audio/webm";
+		const audioKey = `audios/${videoId}.${audioExt}`;
+
 		// Create record in database in "processing" state with user-provided title
 		await createVideo({
 			id: videoId,
@@ -62,14 +72,17 @@ export const POST: APIRoute = async ({ request }) => {
 			status: "processing",
 		});
 
-		// Generate presigned PUT upload URL (30 minutes expiry)
+		// Generate presigned PUT upload URLs (30 minutes expiry)
 		const uploadUrl = await createPresignedUploadUrl(key, standardMime);
+		const audioUploadUrl = await createPresignedUploadUrl(audioKey, standardAudioMime);
 
 		return new Response(
 			JSON.stringify({
 				videoId,
 				uploadUrl,
 				key,
+				audioUploadUrl,
+				audioKey,
 			}),
 			{
 				status: 200,

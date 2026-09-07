@@ -24,6 +24,8 @@ export interface LoomCaptureResult {
 	durationSeconds: number;
 	mimeType: string;
 	hasAudio: boolean;
+	audioBlob?: Blob | undefined;
+	audioMimeType?: string | undefined;
 }
 
 export class LoomCaptureEngine {
@@ -33,6 +35,9 @@ export class LoomCaptureEngine {
 	private webcamVideo: HTMLVideoElement;
 	private mediaRecorder: MediaRecorder | null = null;
 	private recordedChunks: Blob[] = [];
+	private audioRecorder: MediaRecorder | null = null;
+	private recordedAudioChunks: Blob[] = [];
+	private activeAudioMimeType = "audio/webm";
 	private animFrameId: number | null = null;
 	private screenStream: MediaStream | null = null;
 	private webcamStream: MediaStream | null = null;
@@ -327,6 +332,52 @@ export class LoomCaptureEngine {
 		this.totalPausedDuration = 0;
 		this.state = "recording";
 		this.mediaRecorder.start(1000);
+
+		// Start companion lightweight audio recorder (32 kbps mono) for 1-hour Whisper AI processing
+		const audioTracks = this.recordStream.getAudioTracks();
+		this.recordedAudioChunks = [];
+		const primaryAudioTrack = audioTracks[0];
+		if (primaryAudioTrack && typeof MediaRecorder !== "undefined") {
+			const candidateAudioMimes = [
+				"audio/webm;codecs=opus",
+				"audio/webm",
+				"audio/mp4",
+				"audio/aac",
+			];
+			let chosenAudioMime = "";
+			if (typeof MediaRecorder.isTypeSupported === "function") {
+				for (const mime of candidateAudioMimes) {
+					if (MediaRecorder.isTypeSupported(mime)) {
+						chosenAudioMime = mime;
+						break;
+					}
+				}
+			}
+
+			try {
+				const audioStream = new MediaStream([primaryAudioTrack]);
+				const audioOptions: MediaRecorderOptions = {
+					audioBitsPerSecond: 32_000,
+				};
+				if (chosenAudioMime) {
+					audioOptions.mimeType = chosenAudioMime;
+				}
+				this.audioRecorder = new MediaRecorder(audioStream, audioOptions);
+				this.activeAudioMimeType = this.audioRecorder.mimeType || chosenAudioMime || "audio/webm";
+
+				this.audioRecorder.ondataavailable = (e) => {
+					if (e.data && e.data.size > 0) {
+						this.recordedAudioChunks.push(e.data);
+					}
+				};
+				this.audioRecorder.start(1000);
+			} catch (audioInitErr) {
+				console.warn("Companion audio recorder could not be initialized:", audioInitErr);
+				this.audioRecorder = null;
+			}
+		} else {
+			this.audioRecorder = null;
+		}
 	}
 
 	public async start(options: LoomCaptureOptions = {}): Promise<MediaStream> {
@@ -341,6 +392,11 @@ export class LoomCaptureEngine {
 			this.pauseStartedAt = Date.now();
 			this.state = "paused";
 		}
+		if (this.audioRecorder && this.audioRecorder.state === "recording") {
+			try {
+				this.audioRecorder.pause();
+			} catch {}
+		}
 	}
 
 	public resume(): void {
@@ -348,6 +404,11 @@ export class LoomCaptureEngine {
 			this.totalPausedDuration += Date.now() - this.pauseStartedAt;
 			this.mediaRecorder.resume();
 			this.state = "recording";
+		}
+		if (this.audioRecorder && this.audioRecorder.state === "paused") {
+			try {
+				this.audioRecorder.resume();
+			} catch {}
 		}
 	}
 
@@ -406,25 +467,51 @@ export class LoomCaptureEngine {
 			const audioActive = this.hasAudio();
 			this.state = "inactive";
 
+			// Stop companion audio recorder if active
+			if (this.audioRecorder && this.audioRecorder.state !== "inactive") {
+				try {
+					if (typeof this.audioRecorder.requestData === "function") {
+						this.audioRecorder.requestData();
+					}
+				} catch {}
+				try {
+					this.audioRecorder.stop();
+				} catch {}
+			}
+
+			const getAudioData = () => {
+				if (this.recordedAudioChunks.length > 0) {
+					return {
+						audioBlob: new Blob(this.recordedAudioChunks, { type: this.activeAudioMimeType }),
+						audioMimeType: this.activeAudioMimeType,
+					};
+				}
+				return {};
+			};
+
 			if (!this.mediaRecorder) {
+				const audioData = getAudioData();
 				this.cleanup();
 				resolve({
 					blob: new Blob(this.recordedChunks, { type: this.activeMimeType }),
 					durationSeconds: duration,
 					mimeType: this.activeMimeType,
 					hasAudio: audioActive,
+					...audioData,
 				});
 				return;
 			}
 
 			this.mediaRecorder.onstop = () => {
 				const blob = new Blob(this.recordedChunks, { type: this.activeMimeType });
+				const audioData = getAudioData();
 				this.cleanup();
 				resolve({
 					blob,
 					durationSeconds: Math.max(1, duration),
 					mimeType: this.activeMimeType,
 					hasAudio: audioActive,
+					...audioData,
 				});
 			};
 
@@ -438,12 +525,14 @@ export class LoomCaptureEngine {
 				}
 				this.mediaRecorder.stop();
 			} else {
+				const audioData = getAudioData();
 				this.cleanup();
 				resolve({
 					blob: new Blob(this.recordedChunks, { type: this.activeMimeType }),
 					durationSeconds: duration,
 					mimeType: this.activeMimeType,
 					hasAudio: audioActive,
+					...audioData,
 				});
 			}
 		});
@@ -458,6 +547,11 @@ export class LoomCaptureEngine {
 				// ignore
 			}
 		}
+		if (this.audioRecorder && this.audioRecorder.state !== "inactive") {
+			try {
+				this.audioRecorder.stop();
+			} catch {}
+		}
 		this.cleanup();
 	}
 
@@ -465,6 +559,10 @@ export class LoomCaptureEngine {
 		if (this.animFrameId) {
 			cancelAnimationFrame(this.animFrameId);
 			this.animFrameId = null;
+		}
+
+		if (this.audioRecorder) {
+			this.audioRecorder = null;
 		}
 
 		if (this.screenStream) {

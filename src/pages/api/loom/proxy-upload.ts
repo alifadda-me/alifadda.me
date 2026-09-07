@@ -38,8 +38,8 @@ export const POST: APIRoute = async ({ request, url }) => {
 		);
 	}
 
-	// Validate key safety: must be under videos/ and only contain safe alphanumeric, dash, and .webm/.mp4
-	const safeKeyPattern = /^videos\/[a-zA-Z0-9_-]+\.(webm|mp4)$/;
+	// Validate key safety: must be under videos/ or audios/ and only contain safe alphanumeric, dash, and media extension
+	const safeKeyPattern = /^(videos|audios)\/[a-zA-Z0-9_-]+\.(webm|mp4|aac|ogg)$/;
 	if (!safeKeyPattern.test(key)) {
 		return new Response(
 			JSON.stringify({ error: "Invalid key format" }),
