@@ -26,6 +26,7 @@ interface VideoPlayerProps {
 	chapters?: Chapter[];
 	segments?: Segment[];
 	comments?: CommentIndicator[];
+	aiSummary?: string | null;
 	onTimeUpdateExternal?: (currentTime: number) => void;
 	seekTarget?: number | null;
 }
@@ -37,6 +38,7 @@ export default function VideoPlayer({
 	chapters = [],
 	segments = [],
 	comments = [],
+	aiSummary = null,
 	onTimeUpdateExternal,
 	seekTarget,
 }: VideoPlayerProps) {
@@ -46,7 +48,9 @@ export default function VideoPlayer({
 	const [duration, setDuration] = useState<number>(durationSeconds);
 	const [isMuted, setIsMuted] = useState<boolean>(false);
 	const [playbackRate, setPlaybackRate] = useState<number>(1);
-	const [activeTab, setActiveTab] = useState<"chapters" | "transcript">("chapters");
+	const [activeTab, setActiveTab] = useState<"chapters" | "summary" | "transcript">(
+		chapters.length > 0 ? "chapters" : aiSummary ? "summary" : "transcript",
+	);
 	const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 	const playerContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -389,9 +393,10 @@ export default function VideoPlayer({
 			</div>
 
 			{/* Chapters & Interactive Transcript Bar */}
-			{(chapters.length > 0 || segments.length > 0) && (
+			{/* Chapters, AI Summary & Interactive Transcript Bar */}
+			{(chapters.length > 0 || segments.length > 0 || Boolean(aiSummary)) && (
 				<div className="rounded-xl border border-global-text/15 bg-global-bg p-4 font-mono text-global-text shadow-sm">
-					{/* Tabs */}
+					{/* Tabs in Order: Chapters -> AI Summary -> Transcript */}
 					<div className="flex items-center gap-4 border-b border-global-text/10 pb-2 mb-3">
 						{chapters.length > 0 && (
 							<button
@@ -404,6 +409,21 @@ export default function VideoPlayer({
 								}`}
 							>
 								Chapters ({chapters.length})
+							</button>
+						)}
+
+						{aiSummary && (
+							<button
+								type="button"
+								onClick={() => setActiveTab("summary")}
+								className={`text-xs uppercase font-semibold tracking-wider pb-1 transition-colors cursor-pointer flex items-center gap-1.5 ${
+									activeTab === "summary"
+										? "border-b-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold"
+										: "text-global-text/60 hover:text-global-text"
+								}`}
+							>
+								<span>✨</span>
+								<span>AI Summary</span>
 							</button>
 						)}
 
@@ -448,6 +468,19 @@ export default function VideoPlayer({
 									</button>
 								);
 							})}
+						</div>
+					)}
+
+					{/* AI Summary Tab Panel */}
+					{activeTab === "summary" && aiSummary && (
+						<div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+							<div className="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wider">
+								<span>✨</span>
+								<span>Key Takeaways & Summary</span>
+							</div>
+							<div className="text-xs text-global-text/90 leading-relaxed space-y-2 whitespace-pre-wrap font-sans">
+								{aiSummary}
+							</div>
 						</div>
 					)}
 

@@ -155,6 +155,14 @@ export async function updateVideoStatus(
 	}
 }
 
+export async function updateVideoTitle(id: string, title: string): Promise<void> {
+	await ensureDbInitialized();
+	await db.execute({
+		sql: `UPDATE videos SET title = ? WHERE id = ?`,
+		args: [title, id],
+	});
+}
+
 export async function getAiMetadata(videoId: string): Promise<VideoAiMetadataRecord | null> {
 	await ensureDbInitialized();
 	const res = await db.execute({

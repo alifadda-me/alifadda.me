@@ -11,6 +11,7 @@ interface WatchExperienceProps {
 	chapters: Chapter[];
 	segments: Segment[];
 	initialComments: CommentRecord[];
+	aiSummary?: string | null;
 }
 
 export default function WatchExperience({
@@ -21,6 +22,7 @@ export default function WatchExperience({
 	chapters,
 	segments,
 	initialComments,
+	aiSummary = null,
 }: WatchExperienceProps) {
 	const [currentTime, setCurrentTime] = useState<number>(0);
 	const [seekTarget, setSeekTarget] = useState<number | null>(null);
@@ -40,8 +42,8 @@ export default function WatchExperience({
 	};
 
 	return (
-		<div className="space-y-8">
-			{/* Video Player Component */}
+		<div className="space-y-6">
+			{/* Video Player Component (with integrated Chapters, AI Summary, and Transcript) */}
 			<VideoPlayer
 				videoUrl={videoUrl}
 				title={title}
@@ -49,17 +51,20 @@ export default function WatchExperience({
 				chapters={chapters}
 				segments={segments}
 				comments={commentIndicators}
+				aiSummary={aiSummary}
 				onTimeUpdateExternal={setCurrentTime}
 				seekTarget={seekTarget}
 			/>
 
-			{/* Comments Section */}
-			<CommentsSection
-				videoId={videoId}
-				initialComments={initialComments}
-				currentVideoTime={currentTime}
-				onSeekToTime={handleSeekToTime}
-			/>
+			{/* Generous Spacing for Discussion / Comments Section */}
+			<div className="pt-8 mt-12 border-t border-global-text/15">
+				<CommentsSection
+					videoId={videoId}
+					initialComments={initialComments}
+					currentVideoTime={currentTime}
+					onSeekToTime={handleSeekToTime}
+				/>
+			</div>
 		</div>
 	);
 }

@@ -112,6 +112,46 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 		}
 	};
 
+	const handleEditTitle = async (videoId: string, currentTitle: string, e: React.MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		let activeKey = key.trim();
+		if (!activeKey) {
+			const entered = prompt("Enter your RECORD_SECRET to authorize title edit:");
+			if (!entered) return;
+			activeKey = entered.trim();
+		}
+
+		const newTitle = prompt("Enter new video title:", currentTitle);
+		if (!newTitle || !newTitle.trim() || newTitle.trim() === currentTitle) {
+			return;
+		}
+
+		try {
+			const res = await fetch("/api/loom/update-title", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Record-Key": activeKey,
+				},
+				body: JSON.stringify({ videoId, title: newTitle.trim() }),
+			});
+
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				alert("Failed to update title: " + (data.error || "Unknown error"));
+				return;
+			}
+
+			setVideos((prev) =>
+				prev.map((v) => (v.id === videoId ? { ...v, title: newTitle.trim() } : v)),
+			);
+		} catch (err) {
+			alert("Failed to update title: " + (err instanceof Error ? err.message : String(err)));
+		}
+	};
+
 	const handleUnlock = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!key.trim()) {
@@ -257,6 +297,14 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 										title="Copy public share link"
 									>
 										<span>{copiedId === vid.id ? "✓ Copied!" : "🔗 Share"}</span>
+									</button>
+									<button
+										type="button"
+										onClick={(e) => handleEditTitle(vid.id, vid.title, e)}
+										className="inline-flex items-center gap-1 rounded bg-global-text/5 hover:bg-global-text/10 text-global-text/80 border border-global-text/15 px-2 py-0.5 text-[11px] font-semibold cursor-pointer transition-colors"
+										title="Rename video"
+									>
+										<span>✏️ Rename</span>
 									</button>
 									<button
 										type="button"

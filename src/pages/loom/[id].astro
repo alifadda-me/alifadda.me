@@ -89,7 +89,7 @@ const formatDate = (dateString: string) => {
 			</h1>
 		</div>
 
-		{/* Interactive Watch Experience (Player + Timeline + Comments) */}
+		{/* Interactive Watch Experience (Player + Tabs [Chapters -> AI Summary -> Transcript] + Comments) */}
 		<WatchExperience
 			client:load
 			videoId={video.id}
@@ -99,22 +99,8 @@ const formatDate = (dateString: string) => {
 			chapters={chapters}
 			segments={segments}
 			initialComments={comments}
+			aiSummary={aiMeta?.summary || null}
 		/>
-
-		{/* AI Summary Card */}
-		{
-			aiMeta?.summary && (
-				<div class="rounded-xl border border-global-text/15 bg-global-bg p-4 sm:p-5 shadow-sm space-y-2.5">
-					<div class="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wider">
-						<span>✨</span>
-						<span>AI Key Takeaways & Summary</span>
-					</div>
-					<div class="text-xs text-global-text/90 leading-relaxed space-y-2 whitespace-pre-wrap font-sans">
-						{aiMeta.summary}
-					</div>
-				</div>
-			)
-		}
 	</div>
 </PageLayout>
 
