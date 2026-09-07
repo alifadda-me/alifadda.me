@@ -6,11 +6,25 @@ export async function processVideoAI(
 	videoId: string,
 	videoFileUrl: string,
 	customTitle?: string,
+	hasAudio = true,
 ): Promise<void> {
 	const apiKey = getEnvVar("OPENAI_API_KEY");
 
 	if (!apiKey) {
 		console.warn(`[AI Pipeline] OPENAI_API_KEY not configured. Skipping AI enrichment for video ${videoId}.`);
+		await updateVideoStatus(videoId, "ready", customTitle?.trim() || "Recorded Video");
+		return;
+	}
+
+	if (!hasAudio) {
+		console.log(`[AI Pipeline] Video ${videoId} has no audio track. Setting default metadata.`);
+		await saveAiMetadata({
+			video_id: videoId,
+			summary: "Video recording processed without audio.",
+			raw_transcript: "",
+			chapters_json: JSON.stringify([{ time: 0, title: "Recording" }]),
+			segments_json: JSON.stringify([]),
+		}).catch(() => {});
 		await updateVideoStatus(videoId, "ready", customTitle?.trim() || "Recorded Video");
 		return;
 	}
@@ -86,8 +100,20 @@ Transcript:
 		await updateVideoStatus(videoId, "ready", finalTitle);
 
 		console.log(`[AI Pipeline] AI enrichment successfully completed for video ${videoId}`);
-	} catch (error) {
-		console.error(`[AI Pipeline] AI Enrichment Failed for video ${videoId}:`, error);
+	} catch (error: unknown) {
+		const err = error as { status?: number; message?: string };
+		const isAudioDecodeError =
+			err?.status === 400 ||
+			(typeof err?.message === "string" &&
+				(err.message.toLowerCase().includes("could not be decoded") ||
+					err.message.toLowerCase().includes("format is not supported")));
+
+		if (isAudioDecodeError) {
+			console.warn(`[AI Pipeline] Video ${videoId} has no decodable audio stream. Setting fallback metadata.`);
+		} else {
+			console.error(`[AI Pipeline] AI Enrichment Failed for video ${videoId}:`, error);
+		}
+
 		// Save fallback metadata so the video is marked ready and has clean placeholder metadata
 		await saveAiMetadata({
 			video_id: videoId,

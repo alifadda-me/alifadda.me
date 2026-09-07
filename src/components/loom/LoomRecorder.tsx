@@ -21,6 +21,10 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const [captureMode, setCaptureMode] = useState<CaptureMode>("camera");
 	const [facingMode, setFacingMode] = useState<CameraFacing>("user");
 	const [enableMic, setEnableMic] = useState<boolean>(true);
+	const [hasMicTrack, setHasMicTrack] = useState<boolean | null>(null);
+	const [isRequestingMic, setIsRequestingMic] = useState<boolean>(false);
+	const [micNotice, setMicNotice] = useState<string | null>(null);
+	const [showNoAudioConfirm, setShowNoAudioConfirm] = useState<boolean>(false);
 	const [videoTitle, setVideoTitle] = useState<string>("");
 	const [uploadProgress, setUploadProgress] = useState<number>(0);
 	const [createdVideoId, setCreatedVideoId] = useState<string>("");
@@ -33,7 +37,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
 	const [hasDisplayMediaSupport, setHasDisplayMediaSupport] = useState<boolean>(true);
-	const lastRecordedRef = useRef<{ blob: Blob; durationSeconds: number; mimeType: string } | null>(null);
+	const lastRecordedRef = useRef<{ blob: Blob; durationSeconds: number; mimeType: string; hasAudio: boolean } | null>(null);
 
 	useEffect(() => {
 		if (typeof navigator !== "undefined") {
@@ -115,13 +119,17 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 
 					const setupMedia = async () => {
 						let stream: MediaStream | null = null;
+						let micFound = false;
+
 						try {
 							// Request camera + mic together in a single browser prompt
 							stream = await navigator.mediaDevices.getUserMedia({
 								video: videoConstraints,
 								audio: true,
 							});
-						} catch {
+							micFound = stream.getAudioTracks().length > 0;
+						} catch (camMicErr) {
+							console.warn("Combined camera + mic preview failed, falling back to camera only:", camMicErr);
 							try {
 								// Fallback to camera only if microphone access is denied
 								stream = await navigator.mediaDevices.getUserMedia({
@@ -142,10 +150,17 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							previewStreamRef.current.getTracks().forEach((t) => t.stop());
 						}
 
-						// Apply initial microphone state
-						stream.getAudioTracks().forEach((t) => {
-							t.enabled = enableMic;
-						});
+						if (micFound) {
+							setHasMicTrack(true);
+							setMicNotice(null);
+							// Apply initial microphone state
+							stream.getAudioTracks().forEach((t) => {
+								t.enabled = enableMic;
+							});
+						} else {
+							setHasMicTrack(false);
+							setMicNotice("Microphone is not active. Tap 'Enable Mic' below or grant mic permissions.");
+						}
 
 						previewStreamRef.current = stream;
 						setActiveStream(stream);
@@ -251,10 +266,89 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
 	};
 
-	const startRecordingWorkflow = async () => {
+	const requestMicrophonePermission = async (): Promise<boolean> => {
+		setIsRequestingMic(true);
+		setMicNotice(null);
+
+		try {
+			const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			const newAudioTrack = micStream.getAudioTracks()[0];
+
+			if (newAudioTrack && previewStreamRef.current) {
+				// Clean up any stale audio tracks
+				previewStreamRef.current.getAudioTracks().forEach((t) => {
+					previewStreamRef.current?.removeTrack(t);
+					t.stop();
+				});
+
+				previewStreamRef.current.addTrack(newAudioTrack);
+				newAudioTrack.enabled = true;
+				setHasMicTrack(true);
+				setEnableMic(true);
+				setMicNotice(null);
+				setShowNoAudioConfirm(false);
+				setIsRequestingMic(false);
+				return true;
+			}
+			setIsRequestingMic(false);
+			return false;
+		} catch (err: unknown) {
+			console.warn("Microphone request failed:", err);
+			setHasMicTrack(false);
+			setIsRequestingMic(false);
+			const errName = err instanceof Error ? err.name : "";
+			if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+				setMicNotice(
+					"Microphone is blocked in browser settings. On iPhone: open Settings > Chrome > toggle Microphone ON, then tap Enable Mic again.",
+				);
+			} else {
+				setMicNotice("Microphone unavailable on this device. You can record video without audio.");
+			}
+			return false;
+		}
+	};
+
+	const handleToggleMic = async () => {
+		if (!enableMic) {
+			// Turning microphone ON
+			const liveAudio = previewStreamRef.current?.getAudioTracks().find((t) => t.readyState === "live");
+			if (liveAudio) {
+				liveAudio.enabled = true;
+				setEnableMic(true);
+			} else {
+				// Request in this user click gesture
+				const granted = await requestMicrophonePermission();
+				if (!granted) {
+					setEnableMic(false);
+				}
+			}
+		} else {
+			// Turning microphone OFF
+			previewStreamRef.current?.getAudioTracks().forEach((t) => {
+				t.enabled = false;
+			});
+			setEnableMic(false);
+		}
+	};
+
+	const startRecordingWorkflow = async (forceNoAudio = false) => {
 		try {
 			setIsStarting(true);
 			setErrorMessage("");
+
+			// If microphone is enabled but stream lacks a live audio track, attempt user-gesture permission
+			const liveAudio = previewStreamRef.current?.getAudioTracks().find((t) => t.readyState === "live");
+			if (enableMic && !liveAudio && !forceNoAudio && captureMode === "camera") {
+				const granted = await requestMicrophonePermission();
+				if (!granted) {
+					setIsStarting(false);
+					setShowNoAudioConfirm(true);
+					return;
+				}
+			}
+
+			setShowNoAudioConfirm(false);
+
 			const engine = new LoomCaptureEngine();
 			captureEngineRef.current = engine;
 
@@ -262,7 +356,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			const stream = await engine.prepare({
 				mode: captureMode,
 				facingMode,
-				enableMic,
+				enableMic: forceNoAudio ? false : enableMic,
 				enableScreenAudio: true,
 				existingStream: captureMode === "camera" ? previewStreamRef.current : null,
 			});
@@ -356,7 +450,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		setElapsedSeconds(0);
 	};
 
-	const uploadVideoBlob = async (blob: Blob, durationSeconds: number, mimeType: string) => {
+	const uploadVideoBlob = async (blob: Blob, durationSeconds: number, mimeType: string, hasAudio = true) => {
 		setPhase("uploading");
 		setUploadProgress(20);
 
@@ -464,6 +558,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				videoId,
 				durationSeconds,
 				title: videoTitle.trim() || undefined,
+				hasAudio,
 			}),
 		}).catch((e) => {
 			console.warn("AI trigger notice:", e);
@@ -483,14 +578,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		if (!engine) return;
 
 		try {
-			const { blob, durationSeconds, mimeType } = await engine.stop();
+			const { blob, durationSeconds, mimeType, hasAudio } = await engine.stop();
 
 			if (!blob || blob.size === 0) {
 				throw new Error("Recorded video is empty (0 bytes). Please verify camera permissions and record again.");
 			}
 
-			lastRecordedRef.current = { blob, durationSeconds, mimeType };
-			await uploadVideoBlob(blob, durationSeconds, mimeType);
+			lastRecordedRef.current = { blob, durationSeconds, mimeType, hasAudio };
+			await uploadVideoBlob(blob, durationSeconds, mimeType, hasAudio);
 		} catch (err: unknown) {
 			console.error("Upload error:", err);
 			setErrorMessage(err instanceof Error ? err.message : "Upload failed.");
@@ -679,19 +774,84 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					{/* Below Viewfinder Controls */}
 					{phase === "preview" && (
 						<>
-							{/* Mic Toggle */}
-							<div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 text-xs">
-								<span className="text-neutral-700 dark:text-neutral-300 font-mono">Microphone Audio</span>
-								<label className="relative inline-flex items-center cursor-pointer">
-									<input
-										type="checkbox"
-										checked={enableMic}
-										onChange={(e) => setEnableMic(e.target.checked)}
-										className="sr-only peer"
-									/>
-									<div className="w-9 h-5 bg-neutral-400 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-								</label>
+							{/* Microphone Controls & Status */}
+							<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 p-3 space-y-2.5 text-xs font-mono">
+								<div className="flex items-center justify-between">
+									<div className="flex items-center gap-2.5">
+										<span className="text-base">{hasMicTrack && enableMic ? "🎙️" : "🔇"}</span>
+										<div>
+											<p className="font-semibold text-neutral-800 dark:text-neutral-200">Microphone Audio</p>
+											<p className="text-[11px] text-neutral-500">
+												{hasMicTrack === false
+													? "Not connected"
+													: enableMic
+														? "Active & Connected"
+														: "Muted"}
+											</p>
+										</div>
+									</div>
+
+									{hasMicTrack === false ? (
+										<button
+											type="button"
+											onClick={requestMicrophonePermission}
+											disabled={isRequestingMic}
+											className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-neutral-950 text-[11px] font-bold font-mono transition-all cursor-pointer disabled:opacity-60 shadow-xs"
+										>
+											{isRequestingMic ? "Connecting..." : "🎙️ Enable Mic"}
+										</button>
+									) : (
+										<label className="relative inline-flex items-center cursor-pointer">
+											<input
+												type="checkbox"
+												checked={enableMic}
+												onChange={handleToggleMic}
+												className="sr-only peer"
+											/>
+											<div className="w-9 h-5 bg-neutral-400 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+										</label>
+									)}
+								</div>
+
+								{/* Informational notice when mic is not granted or blocked */}
+								{micNotice && (
+									<div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] leading-relaxed flex items-start gap-2">
+										<span className="shrink-0 text-sm">⚠️</span>
+										<span>{micNotice}</span>
+									</div>
+								)}
 							</div>
+
+							{/* Confirmation Alert if User tries to record without audio */}
+							{showNoAudioConfirm && (
+								<div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs font-mono space-y-3">
+									<div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
+										<span className="text-lg">⚠️</span>
+										<div>
+											<p className="font-bold">No Microphone Audio Detected</p>
+											<p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1 leading-relaxed">
+												This video will be recorded without sound (video only). To include voice, allow Microphone in <strong>iPhone Settings &gt; Chrome &gt; Microphone</strong>.
+											</p>
+										</div>
+									</div>
+									<div className="flex items-center gap-2 pt-1">
+										<button
+											type="button"
+											onClick={() => startRecordingWorkflow(true)}
+											className="flex-1 py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs text-center cursor-pointer transition-all"
+										>
+											📹 Record Silent Video
+										</button>
+										<button
+											type="button"
+											onClick={() => setShowNoAudioConfirm(false)}
+											className="py-2 px-3 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-700 dark:text-neutral-300 font-semibold text-xs cursor-pointer transition-all"
+										>
+											Cancel
+										</button>
+									</div>
+								</div>
+							)}
 
 							{/* Visible Error Notification in Preview Phase */}
 							{errorMessage && (
@@ -706,7 +866,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								<button
 									type="button"
 									disabled={isStarting}
-									onClick={startRecordingWorkflow}
+									onClick={() => startRecordingWorkflow(false)}
 									className="w-full flex items-center justify-center gap-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] py-3.5 text-sm font-bold text-white shadow-lg shadow-rose-900/20 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
 								>
 									{isStarting ? (
@@ -834,8 +994,8 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								type="button"
 								onClick={() => {
 									if (lastRecordedRef.current) {
-										const { blob, durationSeconds, mimeType } = lastRecordedRef.current;
-										uploadVideoBlob(blob, durationSeconds, mimeType).catch((err) => {
+										const { blob, durationSeconds, mimeType, hasAudio } = lastRecordedRef.current;
+										uploadVideoBlob(blob, durationSeconds, mimeType, hasAudio).catch((err) => {
 											setErrorMessage(err instanceof Error ? err.message : "Upload retry failed.");
 											setPhase("error");
 										});

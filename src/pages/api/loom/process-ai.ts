@@ -35,7 +35,7 @@ export const POST: APIRoute = async ({ request, url }) => {
 
 	try {
 		const body = await request.json();
-		const { videoId, durationSeconds, title } = body;
+		const { videoId, durationSeconds, title, hasAudio } = body;
 
 		if (!videoId || typeof videoId !== "string" || !UUID_REGEX.test(videoId)) {
 			return new Response(JSON.stringify({ error: "Invalid or missing videoId parameter" }), {
@@ -71,7 +71,7 @@ export const POST: APIRoute = async ({ request, url }) => {
 		}
 
 		// Non-blocking AI execution
-		void processVideoAI(videoId, videoFileUrl, cleanTitle || video.title).catch((err) => {
+		void processVideoAI(videoId, videoFileUrl, cleanTitle || video.title, hasAudio !== false).catch((err) => {
 			console.error(`AI background pipeline error for ${videoId}:`, err);
 		});
 

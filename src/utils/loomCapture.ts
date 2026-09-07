@@ -19,6 +19,13 @@ export interface LoomCaptureOptions {
 	onPreviewStream?: (stream: MediaStream) => void;
 }
 
+export interface LoomCaptureResult {
+	blob: Blob;
+	durationSeconds: number;
+	mimeType: string;
+	hasAudio: boolean;
+}
+
 export class LoomCaptureEngine {
 	private canvas: HTMLCanvasElement;
 	private ctx: CanvasRenderingContext2D | null = null;
@@ -58,6 +65,10 @@ export class LoomCaptureEngine {
 		if (this.state === "inactive" || this.startTime === 0) return 0;
 		const now = this.state === "paused" ? this.pauseStartedAt : Date.now();
 		return Math.max(0, Math.floor((now - this.startTime - this.totalPausedDuration) / 1000));
+	}
+
+	public hasAudio(): boolean {
+		return (this.recordStream?.getAudioTracks().length ?? 0) > 0;
 	}
 
 	public async prepare(options: LoomCaptureOptions = {}): Promise<MediaStream> {
@@ -389,9 +400,10 @@ export class LoomCaptureEngine {
 		this.animFrameId = requestAnimationFrame(this.renderLoop);
 	};
 
-	public async stop(): Promise<{ blob: Blob; durationSeconds: number; mimeType: string }> {
+	public async stop(): Promise<LoomCaptureResult> {
 		return new Promise((resolve) => {
 			const duration = this.getDuration();
+			const audioActive = this.hasAudio();
 			this.state = "inactive";
 
 			if (!this.mediaRecorder) {
@@ -400,6 +412,7 @@ export class LoomCaptureEngine {
 					blob: new Blob(this.recordedChunks, { type: this.activeMimeType }),
 					durationSeconds: duration,
 					mimeType: this.activeMimeType,
+					hasAudio: audioActive,
 				});
 				return;
 			}
@@ -411,6 +424,7 @@ export class LoomCaptureEngine {
 					blob,
 					durationSeconds: Math.max(1, duration),
 					mimeType: this.activeMimeType,
+					hasAudio: audioActive,
 				});
 			};
 
@@ -429,6 +443,7 @@ export class LoomCaptureEngine {
 					blob: new Blob(this.recordedChunks, { type: this.activeMimeType }),
 					durationSeconds: duration,
 					mimeType: this.activeMimeType,
+					hasAudio: audioActive,
 				});
 			}
 		});
