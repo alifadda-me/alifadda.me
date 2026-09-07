@@ -10,7 +10,7 @@ type RecordingPhase = "auth" | "preview" | "countdown" | "recording" | "uploadin
 export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const [recordKey, setRecordKey] = useState<string>(initialKey);
 	const [phase, setPhase] = useState<RecordingPhase>("auth");
-	const [isValidating, setIsValidating] = useState<boolean>(true);
+	const [isValidating, setIsValidating] = useState<boolean>(Boolean(initialKey));
 	const [errorMessage, setErrorMessage] = useState<string>("");
 	const [countdown, setCountdown] = useState<number>(3);
 	const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
@@ -331,33 +331,13 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			setCreatedVideoId(videoId);
 			setUploadProgress(55);
 
-			// 2. Binary upload: Attempt direct PUT to R2, automatically falling back to same-origin proxy
+			// Under 4.5MB (standard videos): Upload directly through same-origin proxy
+			// This avoids third-party CORS preflights and Brave Shields blocking completely.
+			// Over 4.5MB: Upload via presigned PUT to R2 (bypasses Vercel serverless payload limit).
+			const VERCEL_BODY_LIMIT = 4.5 * 1024 * 1024;
 			let uploadSucceeded = false;
-			try {
-				const uploadRes = await fetch(uploadUrl, {
-					method: "PUT",
-					headers: {
-						"Content-Type": mimeType || "video/webm",
-					},
-					body: blob,
-				});
 
-				if (uploadRes.ok) {
-					uploadSucceeded = true;
-				} else {
-					console.warn(
-						`[LoomRecorder] Direct upload returned status ${uploadRes.status}. Falling back to server-side proxy...`,
-					);
-				}
-			} catch (directErr) {
-				console.warn(
-					"[LoomRecorder] Direct upload blocked (CORS / network). Falling back to server-side proxy...",
-					directErr,
-				);
-			}
-
-			if (!uploadSucceeded) {
-				setUploadProgress(65);
+			if (blob.size <= VERCEL_BODY_LIMIT) {
 				const proxyRes = await fetch(
 					`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
 					{
@@ -370,12 +350,52 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					},
 				);
 
-				if (!proxyRes.ok) {
-					const proxyErr = await proxyRes.json().catch(() => ({}));
-					throw new Error(
-						proxyErr.error ||
-							"Upload failed. If direct uploads are blocked by CORS, please add CORS rules in Cloudflare R2 bucket settings.",
-					);
+				if (proxyRes.ok) {
+					uploadSucceeded = true;
+				} else {
+					console.warn("[LoomRecorder] Proxy upload returned non-200, trying direct upload...");
+				}
+			}
+
+			if (!uploadSucceeded) {
+				try {
+					const uploadRes = await fetch(uploadUrl, {
+						method: "PUT",
+						headers: {
+							"Content-Type": mimeType || "video/webm",
+						},
+						body: blob,
+					});
+
+					if (uploadRes.ok) {
+						uploadSucceeded = true;
+					} else {
+						throw new Error(`Direct upload failed with status ${uploadRes.status}`);
+					}
+				} catch (directErr) {
+					// If proxy upload wasn't attempted (because blob > 4.5MB), attempt proxy upload before failing
+					if (blob.size > VERCEL_BODY_LIMIT) {
+						const proxyFallback = await fetch(
+							`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": mimeType || "video/webm",
+									"X-Record-Key": recordKey,
+								},
+								body: blob,
+							},
+						);
+						if (proxyFallback.ok) {
+							uploadSucceeded = true;
+						}
+					}
+
+					if (!uploadSucceeded) {
+						throw new Error(
+							"Upload blocked by Cloudflare R2 CORS. Please enable CORS on your R2 bucket in Cloudflare Dashboard.",
+						);
+					}
 				}
 			}
 
@@ -505,7 +525,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 
 					{/* Viewfinder: Camera or Screen placeholder */}
 					{captureMode === "screen" ? (
-						<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/50 dark:bg-neutral-900/50 aspect-[4/3] sm:aspect-video flex flex-col items-center justify-center p-6 text-center space-y-2">
+						<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/50 dark:bg-neutral-900/50 aspect-video flex flex-col items-center justify-center p-6 text-center space-y-2">
 							<span className="text-3xl">🖥️</span>
 							<p className="text-xs font-mono text-global-text font-bold">Screen Capture Ready</p>
 							<p className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 max-w-xs">
@@ -513,7 +533,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							</p>
 						</div>
 					) : (
-						<div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] sm:aspect-video border border-neutral-800 shadow-inner flex items-center justify-center">
+						<div className="relative rounded-xl overflow-hidden bg-black aspect-video border border-neutral-800 shadow-inner flex items-center justify-center">
 							<video
 								ref={(el) => {
 									videoRef.current = el;
@@ -526,7 +546,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								autoPlay
 								muted
 								playsInline
-								className={`w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : ""}`}
+								className={`w-full h-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""}`}
 							/>
 
 							{/* Switch Camera Button (Front/Back) */}
@@ -574,7 +594,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			{!isValidating && (phase === "countdown" || phase === "recording") && (
 				<div className="space-y-4 text-center">
 					{/* Live Camera / Screen Viewfinder */}
-					<div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] sm:aspect-video border border-rose-500/50 shadow-inner flex items-center justify-center">
+					<div className="relative rounded-xl overflow-hidden bg-black aspect-video border border-rose-500/50 shadow-inner flex items-center justify-center">
 						<video
 							ref={(el) => {
 								videoRef.current = el;
@@ -587,7 +607,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							autoPlay
 							muted
 							playsInline
-							className={`w-full h-full object-cover ${facingMode === "user" && captureMode === "camera" ? "scale-x-[-1]" : ""}`}
+							className={`w-full h-full object-cover ${facingMode === "user" && captureMode === "camera" ? "-scale-x-100" : ""}`}
 						/>
 
 						{/* Countdown Overlay directly on top of live stream */}

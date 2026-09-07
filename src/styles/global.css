@@ -1,5 +1,6 @@
 /* would like to ignore ./src/pages/og-image/[slug].png.ts */
 @import "tailwindcss";
+@source "../**/*.{astro,html,js,jsx,md,mdx,ts,tsx}";
 /* config for tailwindcss-typography plugin */
 @config "../../tailwind.config.ts";
 

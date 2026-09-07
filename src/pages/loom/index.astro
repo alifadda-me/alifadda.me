@@ -11,7 +11,7 @@ const effectiveKey = (queryKey && isAuthorized(queryKey)) ? queryKey : "";
 
 <PageLayout meta={{ title: "Video Vault - Ali Fadda" }} wide={true}>
 	<div class="space-y-6 w-full">
-		<LoomVault client:only="react" initialKey={effectiveKey} />
+		<LoomVault client:load initialKey={effectiveKey} />
 	</div>
 </PageLayout>
 
