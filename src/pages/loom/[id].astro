@@ -1,0 +1,121 @@
+---
+import PageLayout from "@/layouts/Base.astro";
+import WatchExperience from "@/components/loom/WatchExperience";
+import { getVideo, getAiMetadata, getComments } from "@/utils/db";
+import { getVideoPublicUrl } from "@/utils/r2";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+
+if (!id) {
+	return Astro.redirect("/");
+}
+
+const video = await getVideo(id);
+
+if (!video) {
+	return new Response(null, {
+		status: 404,
+		statusText: "Video Not Found",
+	});
+}
+
+// Never save RECORD_SECRET in cookies
+
+const [aiMeta, comments] = await Promise.all([
+	getAiMetadata(id),
+	getComments(id),
+]);
+
+let chapters = [];
+let segments = [];
+
+try {
+	if (aiMeta?.chapters_json) {
+		chapters = JSON.parse(aiMeta.chapters_json);
+	}
+} catch {
+	chapters = [];
+}
+
+try {
+	if (aiMeta?.segments_json) {
+		segments = JSON.parse(aiMeta.segments_json);
+	}
+} catch {
+	segments = [];
+}
+
+const videoUrl = await getVideoPublicUrl(video.storage_path);
+
+const formatDuration = (seconds: number) => {
+	const mins = Math.floor(seconds / 60);
+	const secs = seconds % 60;
+	return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+};
+
+const formatDate = (dateString: string) => {
+	try {
+		return new Date(dateString).toLocaleDateString("en-GB", {
+			day: "numeric",
+			month: "short",
+			year: "numeric",
+		});
+	} catch {
+		return dateString;
+	}
+};
+---
+
+<PageLayout meta={{ title: `${video.title} - Ali Fadda` }}>
+	<style is:global>
+		#main-header {
+			margin-bottom: 1.5rem !important;
+		}
+	</style>
+
+	<div class="space-y-4 font-mono max-w-4xl mx-auto">
+		{/* Compact Header: Title & Meta Info */}
+		<div class="border-b border-global-text/15 pb-3">
+			<div class="flex items-center gap-2 text-xs text-global-text/70 mb-1.5">
+				<span>{formatDate(video.created_at)}</span>
+				<span>•</span>
+				<span>⏱ {formatDuration(video.duration_seconds)}</span>
+			</div>
+
+			<h1 class="text-lg sm:text-xl font-bold text-global-text leading-snug tracking-tight">
+				{video.title}
+			</h1>
+		</div>
+
+		{/* Interactive Watch Experience (Player + Timeline + Comments) */}
+		<WatchExperience
+			client:load
+			videoId={video.id}
+			videoUrl={videoUrl}
+			title={video.title}
+			durationSeconds={video.duration_seconds}
+			chapters={chapters}
+			segments={segments}
+			initialComments={comments}
+		/>
+
+		{/* AI Summary Card */}
+		{
+			aiMeta?.summary && (
+				<div class="rounded-xl border border-global-text/15 bg-global-bg p-4 sm:p-5 shadow-sm space-y-2.5">
+					<div class="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wider">
+						<span>✨</span>
+						<span>AI Key Takeaways & Summary</span>
+					</div>
+					<div class="text-xs text-global-text/90 leading-relaxed space-y-2 whitespace-pre-wrap font-sans">
+						{aiMeta.summary}
+					</div>
+				</div>
+			)
+		}
+	</div>
+</PageLayout>
+
+

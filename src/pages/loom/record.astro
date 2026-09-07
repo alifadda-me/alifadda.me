@@ -1,0 +1,23 @@
+---
+import PageLayout from "@/layouts/Base.astro";
+import LoomRecorder from "@/components/loom/LoomRecorder";
+import { isAuthorized } from "@/utils/auth";
+
+export const prerender = false;
+
+const queryKey = Astro.url.searchParams.get("key");
+const effectiveKey = (queryKey && isAuthorized(queryKey)) ? queryKey : "";
+---
+
+<PageLayout meta={{ title: "Record Video - Studio" }}>
+	<style is:global>
+		#main-header {
+			margin-bottom: 1.5rem !important;
+		}
+	</style>
+
+	<div class="space-y-4 max-w-2xl mx-auto font-mono">
+		<LoomRecorder client:only="react" initialKey={effectiveKey} />
+	</div>
+</PageLayout>
+

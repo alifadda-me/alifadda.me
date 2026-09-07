@@ -1,0 +1,23 @@
+---
+import PageLayout from "@/layouts/Base.astro";
+import LoomVault from "@/components/loom/LoomVault";
+import { isAuthorized } from "@/utils/auth";
+
+export const prerender = false;
+
+const queryKey = Astro.url.searchParams.get("key");
+const effectiveKey = (queryKey && isAuthorized(queryKey)) ? queryKey : "";
+---
+
+<PageLayout meta={{ title: "Video Vault - Ali Fadda" }}>
+	<style is:global>
+		#main-header {
+			margin-bottom: 1.5rem !important;
+		}
+	</style>
+
+	<div class="space-y-6 max-w-4xl mx-auto">
+		<LoomVault client:only="react" initialKey={effectiveKey} />
+	</div>
+</PageLayout>
+

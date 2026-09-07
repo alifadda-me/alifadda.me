@@ -10,23 +10,51 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 
-
-# environment variables
+# environment variables & credentials
 .env
-.env.production
-
-# macOS-specific files
-.DS_Store
-
-# misc
+.env.*
+.env*.local
+*.env
+*.env.*
 *.pem
+*.key
+*.cert
+!.example.env
+!.env.example
+
+# databases & local media uploads
+*.db
+*.db-*
+*.db-journal
+*.sqlite
+*.sqlite3
+local_loom.db
+public/loom-uploads/
+
+# vercel, cloudflare & build tooling
+.vercel/
+.wrangler/
+.turbo/
 .cache
 .astro
 
+# testing & coverage
+coverage/
+test-results/
+playwright-report/
+blob-report/
 
+# macOS-specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# IDE & workspace files
 .idea/
 .vscode/
-
+alifadda.me.code-workspace
 
 .github/FUNDING.yml

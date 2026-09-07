@@ -5,6 +5,8 @@ import tailwind from "@tailwindcss/vite";
 import expressiveCode from "astro-expressive-code";
 import icon from "astro-icon";
 import robotsTxt from "astro-robots-txt";
+import react from "@astrojs/react";
+import vercel from "@astrojs/vercel";
 import webmanifest from "astro-webmanifest";
 import { defineConfig, envField } from "astro/config";
 import { expressiveCodeOptions } from "./src/site.config";
@@ -23,18 +25,27 @@ import rehypeUnwrapImages from "rehype-unwrap-images";
 
 // https://astro.build/config
 export default defineConfig({
+	adapter: vercel(),
 	site: siteConfig.url,
 	image: {
 		domains: ["webmention.io"],
 	},
 	integrations: [
+		react(),
 		expressiveCode(expressiveCodeOptions),
 		icon(),
 		sitemap(),
 		mdx(),
-		robotsTxt(),
+		robotsTxt({
+			policy: [
+				{
+					userAgent: "*",
+					allow: "/",
+					disallow: ["/loom", "/loom/record", "/api/loom/"],
+				},
+			],
+		}),
 		webmanifest({
-			// See: https://github.com/alextim/astro-lib/blob/main/packages/astro-webmanifest/README.md
 			name: siteConfig.title,
 			short_name: "Ali Fadda", // optional
 			description: siteConfig.description,
@@ -91,6 +102,9 @@ export default defineConfig({
 	// https://docs.astro.build/en/guides/prefetch/
 	prefetch: true,
 	vite: {
+		server: {
+			allowedHosts: true,
+		},
 		optimizeDeps: {
 			exclude: ["@resvg/resvg-js"],
 		},
@@ -101,6 +115,15 @@ export default defineConfig({
 			WEBMENTION_API_KEY: envField.string({ context: "server", access: "secret", optional: true }),
 			WEBMENTION_URL: envField.string({ context: "client", access: "public", optional: true }),
 			WEBMENTION_PINGBACK: envField.string({ context: "client", access: "public", optional: true }),
+			RECORD_SECRET: envField.string({ context: "server", access: "secret", optional: true }),
+			R2_ACCOUNT_ID: envField.string({ context: "server", access: "secret", optional: true }),
+			R2_ACCESS_KEY_ID: envField.string({ context: "server", access: "secret", optional: true }),
+			R2_SECRET_ACCESS_KEY: envField.string({ context: "server", access: "secret", optional: true }),
+			R2_BUCKET_NAME: envField.string({ context: "server", access: "secret", optional: true }),
+			R2_PUBLIC_URL: envField.string({ context: "server", access: "secret", optional: true }),
+			OPENAI_API_KEY: envField.string({ context: "server", access: "secret", optional: true }),
+			TURSO_DATABASE_URL: envField.string({ context: "server", access: "secret", optional: true }),
+			TURSO_AUTH_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
 		},
 	},
 });
