@@ -76,17 +76,16 @@ export class LoomCaptureEngine {
 			// Mobile-First Direct Camera Capture
 			// Check if we can reuse the already active video track from preview
 			const liveVideoTrack = existingStream?.getVideoTracks().find((t) => t.readyState === "live");
+			const liveAudioTrack = existingStream?.getAudioTracks().find((t) => t.readyState === "live");
 
 			if (liveVideoTrack) {
 				const tracks: MediaStreamTrack[] = [liveVideoTrack];
 
 				if (enableMic) {
-					try {
-						const micStream = await navigator.mediaDevices.getUserMedia({
-							audio: { echoCancellation: true },
-						});
-						tracks.push(...micStream.getAudioTracks());
-					} catch {
+					if (liveAudioTrack) {
+						liveAudioTrack.enabled = true;
+						tracks.push(liveAudioTrack);
+					} else {
 						try {
 							const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 							tracks.push(...micStream.getAudioTracks());
@@ -289,7 +288,7 @@ export class LoomCaptureEngine {
 
 		// Configure bitrates for fast, reliable upload (1.2 Mbps keeps 20s recording under 3MB)
 		const recorderOptions: MediaRecorderOptions = {
-			videoBitsPerSecond: 1_200_000,
+			videoBitsPerSecond: 900_000,
 			audioBitsPerSecond: 64_000,
 		};
 

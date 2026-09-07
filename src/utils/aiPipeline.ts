@@ -88,6 +88,14 @@ Transcript:
 		console.log(`[AI Pipeline] AI enrichment successfully completed for video ${videoId}`);
 	} catch (error) {
 		console.error(`[AI Pipeline] AI Enrichment Failed for video ${videoId}:`, error);
+		// Save fallback metadata so the video is marked ready and has clean placeholder metadata
+		await saveAiMetadata({
+			video_id: videoId,
+			summary: "Video recording processed. (No spoken audio detected for transcription).",
+			raw_transcript: "",
+			chapters_json: JSON.stringify([{ time: 0, title: "Recording" }]),
+			segments_json: JSON.stringify([]),
+		}).catch(() => {});
 		await updateVideoStatus(videoId, "ready", customTitle?.trim() || "Recorded Video");
 	}
 }

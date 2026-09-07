@@ -33,6 +33,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
 	const [hasDisplayMediaSupport, setHasDisplayMediaSupport] = useState<boolean>(true);
+	const lastRecordedRef = useRef<{ blob: Blob; durationSeconds: number; mimeType: string } | null>(null);
 
 	useEffect(() => {
 		if (typeof navigator !== "undefined") {
@@ -97,38 +98,60 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		};
 	}, [initialKey]);
 
-	// Camera preview setup for preview phase (only active when verified in preview phase)
+	// Camera and microphone preview setup for preview phase (requests both together in one prompt)
 	useEffect(() => {
 		let isMounted = true;
 
 		if (phase === "preview") {
 			if (captureMode === "camera" || captureMode === "screen_with_camera") {
-				const hasLiveTracks = previewStreamRef.current?.getVideoTracks().some((t) => t.readyState === "live");
-				// If we don't already have live video tracks, acquire camera
-				if (!hasLiveTracks) {
-					navigator.mediaDevices
-						?.getUserMedia({
-							video: {
-								facingMode: { ideal: facingMode },
-								width: { ideal: 1280 },
-								height: { ideal: 720 },
-							},
-							audio: false,
-						})
-						.then((stream) => {
-							if (!isMounted) {
-								stream.getTracks().forEach((t) => t.stop());
-								return;
+				const hasLiveVideo = previewStreamRef.current?.getVideoTracks().some((t) => t.readyState === "live");
+				// If we don't already have live video tracks, acquire camera and microphone
+				if (!hasLiveVideo) {
+					const videoConstraints = {
+						facingMode: { ideal: facingMode },
+						width: { ideal: 1280 },
+						height: { ideal: 720 },
+					};
+
+					const setupMedia = async () => {
+						let stream: MediaStream | null = null;
+						try {
+							// Request camera + mic together in a single browser prompt
+							stream = await navigator.mediaDevices.getUserMedia({
+								video: videoConstraints,
+								audio: true,
+							});
+						} catch {
+							try {
+								// Fallback to camera only if microphone access is denied
+								stream = await navigator.mediaDevices.getUserMedia({
+									video: videoConstraints,
+									audio: false,
+								});
+							} catch (err) {
+								console.warn("Camera preview not accessible:", err);
 							}
-							if (previewStreamRef.current && previewStreamRef.current !== stream) {
-								previewStreamRef.current.getTracks().forEach((t) => t.stop());
-							}
-							previewStreamRef.current = stream;
-							setActiveStream(stream);
-						})
-						.catch((err) => {
-							console.warn("Camera preview not accessible:", err);
+						}
+
+						if (!isMounted || !stream) {
+							stream?.getTracks().forEach((t) => t.stop());
+							return;
+						}
+
+						if (previewStreamRef.current && previewStreamRef.current !== stream) {
+							previewStreamRef.current.getTracks().forEach((t) => t.stop());
+						}
+
+						// Apply initial microphone state
+						stream.getAudioTracks().forEach((t) => {
+							t.enabled = enableMic;
 						});
+
+						previewStreamRef.current = stream;
+						setActiveStream(stream);
+					};
+
+					setupMedia();
 				}
 			} else {
 				// Screen mode
@@ -146,6 +169,15 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			// reuses these active tracks! Teardown happens on unmount or cancel.
 		};
 	}, [phase, captureMode, facingMode]);
+
+	// Sync microphone checkbox directly to live audio track
+	useEffect(() => {
+		if (previewStreamRef.current) {
+			previewStreamRef.current.getAudioTracks().forEach((t) => {
+				t.enabled = enableMic;
+			});
+		}
+	}, [enableMic]);
 
 	// Full stream teardown only when component unmounts
 	useEffect(() => {
@@ -324,6 +356,123 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		setElapsedSeconds(0);
 	};
 
+	const uploadVideoBlob = async (blob: Blob, durationSeconds: number, mimeType: string) => {
+		setPhase("uploading");
+		setUploadProgress(20);
+
+		// 1. Request Presigned Upload URL with user-chosen title and accurate detected MIME type
+		const detectedMime = mimeType || blob.type || "video/webm";
+		const initRes = await fetch("/api/loom/upload-url", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Record-Key": recordKey,
+			},
+			body: JSON.stringify({
+				title: videoTitle.trim() || undefined,
+				mimeType: detectedMime,
+			}),
+		});
+
+		if (!initRes.ok) {
+			const errorData = await initRes.json().catch(() => ({}));
+			throw new Error(errorData.error || "Failed to initialize upload. Ensure RECORD_SECRET matches.");
+		}
+
+		const { videoId, uploadUrl, key } = await initRes.json();
+		setCreatedVideoId(videoId);
+		setUploadProgress(50);
+
+		// Under 4.0MB: Upload directly through same-origin proxy
+		// Over 4.0MB: Upload via presigned PUT to R2
+		const VERCEL_BODY_LIMIT = 4.0 * 1024 * 1024;
+		let uploadSucceeded = false;
+
+		if (blob.size <= VERCEL_BODY_LIMIT) {
+			const proxyRes = await fetch(
+				`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": detectedMime,
+						"X-Record-Key": recordKey,
+					},
+					body: blob,
+				},
+			);
+
+			if (proxyRes.ok) {
+				uploadSucceeded = true;
+			} else {
+				console.warn("[LoomRecorder] Proxy upload returned non-200, trying direct upload...");
+			}
+		}
+
+		if (!uploadSucceeded) {
+			try {
+				const uploadRes = await fetch(uploadUrl, {
+					method: "PUT",
+					headers: {
+						"Content-Type": detectedMime,
+					},
+					body: blob,
+				});
+
+				if (uploadRes.ok) {
+					uploadSucceeded = true;
+				} else {
+					throw new Error(`Direct upload failed with status ${uploadRes.status}`);
+				}
+			} catch (directErr) {
+				// If proxy upload wasn't attempted (because blob > 4.0MB), attempt proxy upload before failing
+				if (blob.size > VERCEL_BODY_LIMIT) {
+					const proxyFallback = await fetch(
+						`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": detectedMime,
+								"X-Record-Key": recordKey,
+							},
+							body: blob,
+						},
+					);
+					if (proxyFallback.ok) {
+						uploadSucceeded = true;
+					}
+				}
+
+				if (!uploadSucceeded) {
+					const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
+					throw new Error(
+						`Upload of ${sizeMb}MB video was blocked by Cloudflare R2 CORS. Please enable CORS on your R2 bucket in Cloudflare Dashboard, or click Retry below.`,
+					);
+				}
+			}
+		}
+
+		setUploadProgress(85);
+
+		// 3. Trigger Async AI Pipeline
+		await fetch("/api/loom/process-ai", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Record-Key": recordKey,
+			},
+			body: JSON.stringify({
+				videoId,
+				durationSeconds,
+				title: videoTitle.trim() || undefined,
+			}),
+		}).catch((e) => {
+			console.warn("AI trigger notice:", e);
+		});
+
+		setUploadProgress(100);
+		setPhase("done");
+	};
+
 	const handleFinish = async () => {
 		if (timerIntervalRef.current) {
 			clearInterval(timerIntervalRef.current);
@@ -333,129 +482,15 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		const engine = captureEngineRef.current;
 		if (!engine) return;
 
-		setPhase("uploading");
-		setUploadProgress(15);
-
 		try {
 			const { blob, durationSeconds, mimeType } = await engine.stop();
-			setUploadProgress(35);
 
 			if (!blob || blob.size === 0) {
 				throw new Error("Recorded video is empty (0 bytes). Please verify camera permissions and record again.");
 			}
 
-			// 1. Request Presigned Upload URL with user-chosen title and accurate detected MIME type
-			const detectedMime = mimeType || blob.type || "video/webm";
-			const initRes = await fetch("/api/loom/upload-url", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Record-Key": recordKey,
-				},
-				body: JSON.stringify({
-					title: videoTitle.trim() || undefined,
-					mimeType: detectedMime,
-				}),
-			});
-
-			if (!initRes.ok) {
-				const errorData = await initRes.json().catch(() => ({}));
-				throw new Error(errorData.error || "Failed to initialize upload. Ensure RECORD_SECRET matches.");
-			}
-
-			const { videoId, uploadUrl, key } = await initRes.json();
-			setCreatedVideoId(videoId);
-			setUploadProgress(55);
-
-			// Under 4.0MB (standard compressed videos): Upload directly through same-origin proxy
-			// This avoids third-party CORS preflights and Brave Shields blocking completely.
-			// Over 4.0MB: Upload via presigned PUT to R2 (bypasses Vercel serverless payload limit).
-			const VERCEL_BODY_LIMIT = 4.0 * 1024 * 1024;
-			let uploadSucceeded = false;
-
-			if (blob.size <= VERCEL_BODY_LIMIT) {
-				const proxyRes = await fetch(
-					`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
-					{
-						method: "POST",
-						headers: {
-							"Content-Type": detectedMime,
-							"X-Record-Key": recordKey,
-						},
-						body: blob,
-					},
-				);
-
-				if (proxyRes.ok) {
-					uploadSucceeded = true;
-				} else {
-					console.warn("[LoomRecorder] Proxy upload returned non-200, trying direct upload...");
-				}
-			}
-
-			if (!uploadSucceeded) {
-				try {
-					const uploadRes = await fetch(uploadUrl, {
-						method: "PUT",
-						headers: {
-							"Content-Type": detectedMime,
-						},
-						body: blob,
-					});
-
-					if (uploadRes.ok) {
-						uploadSucceeded = true;
-					} else {
-						throw new Error(`Direct upload failed with status ${uploadRes.status}`);
-					}
-				} catch (directErr) {
-					// If proxy upload wasn't attempted (because blob > 4.0MB), attempt proxy upload before failing
-					if (blob.size > VERCEL_BODY_LIMIT) {
-						const proxyFallback = await fetch(
-							`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
-							{
-								method: "POST",
-								headers: {
-									"Content-Type": detectedMime,
-									"X-Record-Key": recordKey,
-								},
-								body: blob,
-							},
-						);
-						if (proxyFallback.ok) {
-							uploadSucceeded = true;
-						}
-					}
-
-					if (!uploadSucceeded) {
-						const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
-						throw new Error(
-							`Upload of ${sizeMb}MB video was blocked. Cloudflare R2 CORS must be enabled in Cloudflare Dashboard to upload files over 4MB, or record shorter videos under 30 seconds.`,
-						);
-					}
-				}
-			}
-
-			setUploadProgress(85);
-
-			// 3. Trigger Async AI Pipeline with user-chosen title
-			await fetch("/api/loom/process-ai", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Record-Key": recordKey,
-				},
-				body: JSON.stringify({
-					videoId,
-					durationSeconds,
-					title: videoTitle.trim() || undefined,
-				}),
-			}).catch((e) => {
-				console.warn("AI trigger notice:", e);
-			});
-
-			setUploadProgress(100);
-			setPhase("done");
+			lastRecordedRef.current = { blob, durationSeconds, mimeType };
+			await uploadVideoBlob(blob, durationSeconds, mimeType);
 		} catch (err: unknown) {
 			console.error("Upload error:", err);
 			setErrorMessage(err instanceof Error ? err.message : "Upload failed.");
@@ -785,23 +820,67 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				</div>
 			)}
 
-			{/* Phase: Error */}
+			{/* Phase: Error with Retry and Save Fallbacks */}
 			{phase === "error" && (
-				<div className="space-y-3 py-4 text-center">
+				<div className="space-y-4 py-4 text-center">
 					<div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/20 text-rose-500 text-lg font-bold">
 						!
 					</div>
 					<p className="text-xs text-rose-500 font-mono leading-relaxed max-w-md mx-auto">{errorMessage}</p>
-					<button
-						type="button"
-						onClick={() => {
-							setErrorMessage("");
-							setPhase("preview");
-						}}
-						className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-4 py-2 text-xs font-mono text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
-					>
-						Back to Setup
-					</button>
+
+					<div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2">
+						{lastRecordedRef.current && (
+							<button
+								type="button"
+								onClick={() => {
+									if (lastRecordedRef.current) {
+										const { blob, durationSeconds, mimeType } = lastRecordedRef.current;
+										uploadVideoBlob(blob, durationSeconds, mimeType).catch((err) => {
+											setErrorMessage(err instanceof Error ? err.message : "Upload retry failed.");
+											setPhase("error");
+										});
+									}
+								}}
+								className="w-full sm:w-auto rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2.5 text-xs font-mono font-bold text-neutral-950 transition-colors cursor-pointer"
+							>
+								🔄 Retry Upload
+							</button>
+						)}
+
+						{lastRecordedRef.current && (
+							<button
+								type="button"
+								onClick={() => {
+									if (lastRecordedRef.current) {
+										const { blob, mimeType } = lastRecordedRef.current;
+										const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+										const url = URL.createObjectURL(blob);
+										const a = document.createElement("a");
+										a.href = url;
+										a.download = `loom-recording-${Date.now()}.${ext}`;
+										document.body.appendChild(a);
+										a.click();
+										document.body.removeChild(a);
+										setTimeout(() => URL.revokeObjectURL(url), 1000);
+									}
+								}}
+								className="w-full sm:w-auto rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-4 py-2.5 text-xs font-mono font-semibold text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
+							>
+								💾 Save to Device
+							</button>
+						)}
+
+						<button
+							type="button"
+							onClick={() => {
+								setErrorMessage("");
+								setPhase("preview");
+							}}
+							className="w-full sm:w-auto rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-4 py-2.5 text-xs font-mono text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
+						>
+							Back to Studio
+						</button>
+					</div>
 				</div>
 			)}
 		</div>
