@@ -15,6 +15,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const [countdown, setCountdown] = useState<number>(3);
 	const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 	const [isPaused, setIsPaused] = useState<boolean>(false);
+	const [isStarting, setIsStarting] = useState<boolean>(false);
 
 	// Mode state (Defaulting to Camera for mobile-first)
 	const [captureMode, setCaptureMode] = useState<CaptureMode>("camera");
@@ -31,6 +32,13 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
+	const [hasDisplayMediaSupport, setHasDisplayMediaSupport] = useState<boolean>(true);
+
+	useEffect(() => {
+		if (typeof navigator !== "undefined") {
+			setHasDisplayMediaSupport(Boolean(navigator.mediaDevices?.getDisplayMedia));
+		}
+	}, []);
 
 	// Never save RECORD_SECRET: purge any previous storage on mount and require fresh auth
 	useEffect(() => {
@@ -196,20 +204,22 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 
 	const startRecordingWorkflow = async () => {
 		try {
+			setIsStarting(true);
 			setErrorMessage("");
 			const engine = new LoomCaptureEngine();
 			captureEngineRef.current = engine;
 
-			// 1. Prepare stream (prompts for screen if screen mode; gets high-res camera + mic)
+			// 1. Prepare stream (reusing preview camera if active to prevent iOS WebKit device lockup)
 			const stream = await engine.prepare({
 				mode: captureMode,
 				facingMode,
 				enableMic,
 				enableScreenAudio: true,
+				existingStream: captureMode === "camera" ? previewStreamRef.current : null,
 			});
 
-			// Stop the temporary preview stream tracks now that engine stream is active
-			if (previewStreamRef.current) {
+			// If screen capture was selected, release camera preview tracks
+			if (captureMode !== "camera" && previewStreamRef.current) {
 				previewStreamRef.current.getTracks().forEach((t) => t.stop());
 				previewStreamRef.current = null;
 			}
@@ -225,6 +235,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			// 3. Start countdown overlay
 			setPhase("countdown");
 			setCountdown(3);
+			setIsStarting(false);
 
 			let count = 3;
 			if (countdownIntervalRef.current) {
@@ -262,6 +273,8 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			console.error("Recording setup error:", err);
 			setErrorMessage(err instanceof Error ? err.message : "Failed to prepare capture stream.");
 			setPhase("preview");
+		} finally {
+			setIsStarting(false);
 		}
 	};
 
@@ -310,7 +323,8 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			const { blob, durationSeconds, mimeType } = await engine.stop();
 			setUploadProgress(35);
 
-			// 1. Request Presigned Upload URL with user-chosen title
+			// 1. Request Presigned Upload URL with user-chosen title and accurate detected MIME type
+			const detectedMime = mimeType || blob.type || "video/webm";
 			const initRes = await fetch("/api/loom/upload-url", {
 				method: "POST",
 				headers: {
@@ -319,6 +333,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				},
 				body: JSON.stringify({
 					title: videoTitle.trim() || undefined,
+					mimeType: detectedMime,
 				}),
 			});
 
@@ -331,10 +346,10 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			setCreatedVideoId(videoId);
 			setUploadProgress(55);
 
-			// Under 4.5MB (standard videos): Upload directly through same-origin proxy
+			// Under 4.0MB (standard compressed videos): Upload directly through same-origin proxy
 			// This avoids third-party CORS preflights and Brave Shields blocking completely.
-			// Over 4.5MB: Upload via presigned PUT to R2 (bypasses Vercel serverless payload limit).
-			const VERCEL_BODY_LIMIT = 4.5 * 1024 * 1024;
+			// Over 4.0MB: Upload via presigned PUT to R2 (bypasses Vercel serverless payload limit).
+			const VERCEL_BODY_LIMIT = 4.0 * 1024 * 1024;
 			let uploadSucceeded = false;
 
 			if (blob.size <= VERCEL_BODY_LIMIT) {
@@ -343,7 +358,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					{
 						method: "POST",
 						headers: {
-							"Content-Type": mimeType || "video/webm",
+							"Content-Type": detectedMime,
 							"X-Record-Key": recordKey,
 						},
 						body: blob,
@@ -362,7 +377,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					const uploadRes = await fetch(uploadUrl, {
 						method: "PUT",
 						headers: {
-							"Content-Type": mimeType || "video/webm",
+							"Content-Type": detectedMime,
 						},
 						body: blob,
 					});
@@ -373,14 +388,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 						throw new Error(`Direct upload failed with status ${uploadRes.status}`);
 					}
 				} catch (directErr) {
-					// If proxy upload wasn't attempted (because blob > 4.5MB), attempt proxy upload before failing
+					// If proxy upload wasn't attempted (because blob > 4.0MB), attempt proxy upload before failing
 					if (blob.size > VERCEL_BODY_LIMIT) {
 						const proxyFallback = await fetch(
 							`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
 							{
 								method: "POST",
 								headers: {
-									"Content-Type": mimeType || "video/webm",
+									"Content-Type": detectedMime,
 									"X-Record-Key": recordKey,
 								},
 								body: blob,
@@ -392,8 +407,9 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					}
 
 					if (!uploadSucceeded) {
+						const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
 						throw new Error(
-							"Upload blocked by Cloudflare R2 CORS. Please enable CORS on your R2 bucket in Cloudflare Dashboard.",
+							`Upload of ${sizeMb}MB video was blocked. Cloudflare R2 CORS must be enabled in Cloudflare Dashboard to upload files over 4MB, or record shorter videos under 30 seconds.`,
 						);
 					}
 				}
@@ -490,25 +506,43 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 						</button>
 						<button
 							type="button"
-							onClick={() => setCaptureMode("screen")}
+							onClick={() => {
+								if (hasDisplayMediaSupport) {
+									setCaptureMode("screen");
+								} else {
+									setErrorMessage("Screen recording is not supported on mobile browsers. Please use Camera mode.");
+								}
+							}}
 							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
 								captureMode === "screen"
 									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+									: hasDisplayMediaSupport
+										? "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+										: "text-neutral-400 dark:text-neutral-600 opacity-60"
 							}`}
+							title={hasDisplayMediaSupport ? "Record Screen" : "Screen capture is only supported on Desktop"}
 						>
-							🖥️ Screen
+							🖥️ Screen{!hasDisplayMediaSupport && " (PC)"}
 						</button>
 						<button
 							type="button"
-							onClick={() => setCaptureMode("screen_with_camera")}
+							onClick={() => {
+								if (hasDisplayMediaSupport) {
+									setCaptureMode("screen_with_camera");
+								} else {
+									setErrorMessage("Screen recording is not supported on mobile browsers. Please use Camera mode.");
+								}
+							}}
 							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
 								captureMode === "screen_with_camera"
 									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+									: hasDisplayMediaSupport
+										? "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+										: "text-neutral-400 dark:text-neutral-600 opacity-60"
 							}`}
+							title={hasDisplayMediaSupport ? "Record Screen with Camera" : "Screen capture is only supported on Desktop"}
 						>
-							💻 Screen+Cam
+							💻 Screen+Cam{!hasDisplayMediaSupport && " (PC)"}
 						</button>
 					</div>
 
@@ -576,15 +610,33 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 						</label>
 					</div>
 
+					{/* Visible Error Notification in Preview Phase */}
+					{errorMessage && (
+						<div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-mono leading-relaxed flex items-start gap-2">
+							<span>⚠️</span>
+							<span>{errorMessage}</span>
+						</div>
+					)}
+
 					{/* Big Touch-Friendly Record Button */}
-					<div className="pt-2">
+					<div className="pt-1">
 						<button
 							type="button"
+							disabled={isStarting}
 							onClick={startRecordingWorkflow}
-							className="w-full flex items-center justify-center gap-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] py-3.5 text-sm font-bold text-white shadow-lg shadow-rose-900/20 transition-all cursor-pointer"
+							className="w-full flex items-center justify-center gap-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] py-3.5 text-sm font-bold text-white shadow-lg shadow-rose-900/20 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
 						>
-							<div className="h-4 w-4 rounded-full bg-white animate-ping" />
-							<span>Start Recording</span>
+							{isStarting ? (
+								<>
+									<div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+									<span>Preparing Camera & Mic...</span>
+								</>
+							) : (
+								<>
+									<div className="h-4 w-4 rounded-full bg-white animate-ping" />
+									<span>Start Recording</span>
+								</>
+							)}
 						</button>
 					</div>
 				</div>

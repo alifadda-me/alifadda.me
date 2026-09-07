@@ -55,6 +55,6 @@ Icon?
 # IDE & workspace files
 .idea/
 .vscode/
-alifadda.me.code-workspace
+*.code-workspace
 
 .github/FUNDING.yml

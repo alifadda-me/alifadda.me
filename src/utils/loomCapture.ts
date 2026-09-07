@@ -15,6 +15,7 @@ export interface LoomCaptureOptions {
 	facingMode?: CameraFacing;
 	enableMic?: boolean;
 	enableScreenAudio?: boolean;
+	existingStream?: MediaStream | null;
 	onPreviewStream?: (stream: MediaStream) => void;
 }
 
@@ -65,6 +66,7 @@ export class LoomCaptureEngine {
 			facingMode = "user",
 			enableMic = true,
 			enableScreenAudio = true,
+			existingStream,
 			onPreviewStream,
 		} = options;
 
@@ -72,23 +74,64 @@ export class LoomCaptureEngine {
 
 		if (mode === "camera") {
 			// Mobile-First Direct Camera Capture
-			this.webcamStream = await navigator.mediaDevices.getUserMedia({
-				video: {
-					facingMode: { ideal: facingMode },
-					width: { ideal: 1920 },
-					height: { ideal: 1080 },
-				},
-				audio: enableMic
-					? {
-							echoCancellation: true,
-							noiseSuppression: true,
-							autoGainControl: true,
-						}
-					: false,
-			});
+			// Check if we can reuse the already active video track from preview
+			const liveVideoTrack = existingStream?.getVideoTracks().find((t) => t.readyState === "live");
 
-			this.webcamVideo.srcObject = this.webcamStream;
-			recordStream = this.webcamStream;
+			if (liveVideoTrack) {
+				const tracks: MediaStreamTrack[] = [liveVideoTrack];
+
+				if (enableMic) {
+					try {
+						const micStream = await navigator.mediaDevices.getUserMedia({
+							audio: { echoCancellation: true },
+						});
+						tracks.push(...micStream.getAudioTracks());
+					} catch {
+						try {
+							const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+							tracks.push(...micStream.getAudioTracks());
+						} catch (audioErr) {
+							console.warn("Microphone not accessible, proceeding with video only:", audioErr);
+						}
+					}
+				}
+
+				this.webcamStream = new MediaStream(tracks);
+				this.webcamVideo.srcObject = this.webcamStream;
+				recordStream = this.webcamStream;
+			} else {
+				// No existing live video track: acquire fresh camera + mic stream with safe mobile fallbacks
+				let stream: MediaStream | null = null;
+				// Attempt 1: Safe 720p with facingMode and simple audio
+				try {
+					stream = await navigator.mediaDevices.getUserMedia({
+						video: {
+							facingMode: { ideal: facingMode },
+							width: { ideal: 1280 },
+							height: { ideal: 720 },
+						},
+						audio: enableMic ? true : false,
+					});
+				} catch {
+					// Attempt 2: Basic facingMode only
+					try {
+						stream = await navigator.mediaDevices.getUserMedia({
+							video: { facingMode: { ideal: facingMode } },
+							audio: enableMic ? true : false,
+						});
+					} catch {
+						// Attempt 3: Basic video only
+						stream = await navigator.mediaDevices.getUserMedia({
+							video: true,
+							audio: false,
+						});
+					}
+				}
+
+				this.webcamStream = stream;
+				this.webcamVideo.srcObject = this.webcamStream;
+				recordStream = this.webcamStream;
+			}
 		} else if (mode === "screen_with_camera") {
 			// Desktop Screen + Circular Camera Canvas Compositing
 			if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -225,26 +268,44 @@ export class LoomCaptureEngine {
 			throw new Error("No prepared stream found to record.");
 		}
 
-		// Select MIME type
+		// Select MIME type favoring device capabilities (iOS WebKit prefers video/mp4)
 		const candidateMimes = [
+			"video/mp4",
+			"video/mp4;codecs=avc1,mp4a.40.2",
 			"video/webm;codecs=vp9,opus",
 			"video/webm;codecs=vp8,opus",
 			"video/webm",
-			"video/mp4;codecs=avc1",
-			"video/mp4",
 		];
 
-		let chosenMime = "video/webm";
-		for (const mime of candidateMimes) {
-			if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) {
-				chosenMime = mime;
-				break;
+		let chosenMime = "";
+		if (typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function") {
+			for (const mime of candidateMimes) {
+				if (MediaRecorder.isTypeSupported(mime)) {
+					chosenMime = mime;
+					break;
+				}
 			}
 		}
 
-		this.activeMimeType = chosenMime;
+		// Configure bitrates for fast, reliable upload (1.2 Mbps keeps 20s recording under 3MB)
+		const recorderOptions: MediaRecorderOptions = {
+			videoBitsPerSecond: 1_200_000,
+			audioBitsPerSecond: 64_000,
+		};
+
+		if (chosenMime) {
+			recorderOptions.mimeType = chosenMime;
+		}
+
 		this.recordedChunks = [];
-		this.mediaRecorder = new MediaRecorder(this.recordStream, { mimeType: chosenMime });
+		try {
+			this.mediaRecorder = new MediaRecorder(this.recordStream, recorderOptions);
+		} catch (recorderInitErr) {
+			console.warn("Failed to initialize MediaRecorder with custom options, attempting fallback:", recorderInitErr);
+			this.mediaRecorder = new MediaRecorder(this.recordStream);
+		}
+
+		this.activeMimeType = this.mediaRecorder.mimeType || chosenMime || "video/webm";
 
 		this.mediaRecorder.ondataavailable = (e) => {
 			if (e.data && e.data.size > 0) {

@@ -33,18 +33,25 @@ export const POST: APIRoute = async ({ request }) => {
 
 	try {
 		let customTitle = "Recorded Video";
+		let clientMime = "video/webm";
 		try {
 			const body = await request.json();
 			if (body?.title && typeof body.title === "string" && body.title.trim()) {
 				// Sanitize and limit title length
 				customTitle = body.title.trim().slice(0, 150);
 			}
+			if (body?.mimeType && typeof body.mimeType === "string" && body.mimeType.trim()) {
+				clientMime = body.mimeType.trim();
+			}
 		} catch {
-			// No JSON body provided, fallback to default
+			// No JSON body provided, fallback to defaults
 		}
 
+		const isMp4 = clientMime.toLowerCase().includes("mp4");
+		const ext = isMp4 ? "mp4" : "webm";
+		const standardMime = isMp4 ? "video/mp4" : "video/webm";
 		const videoId = crypto.randomUUID();
-		const key = `videos/${videoId}.webm`;
+		const key = `videos/${videoId}.${ext}`;
 
 		// Create record in database in "processing" state with user-provided title
 		await createVideo({
@@ -56,7 +63,7 @@ export const POST: APIRoute = async ({ request }) => {
 		});
 
 		// Generate presigned PUT upload URL (30 minutes expiry)
-		const uploadUrl = await createPresignedUploadUrl(key, "video/webm");
+		const uploadUrl = await createPresignedUploadUrl(key, standardMime);
 
 		return new Response(
 			JSON.stringify({
