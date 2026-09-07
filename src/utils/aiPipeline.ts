@@ -25,10 +25,13 @@ export async function processVideoAI(
 		}
 
 		const audioBlob = await response.blob();
-		const file = new File([audioBlob], "audio.webm", { type: "video/webm" });
+		const isMp4 = videoFileUrl.toLowerCase().includes(".mp4") || audioBlob.type.toLowerCase().includes("mp4");
+		const fileName = isMp4 ? "audio.mp4" : "audio.webm";
+		const fileType = isMp4 ? "video/mp4" : "video/webm";
+		const file = new File([audioBlob], fileName, { type: fileType });
 
 		// 1. Whisper Transcription
-		console.log(`[AI Pipeline] Transcribing audio with Whisper for video ${videoId}...`);
+		console.log(`[AI Pipeline] Transcribing audio with Whisper for video ${videoId} (${fileName}, ${audioBlob.size} bytes)...`);
 		const transcription = await openai.audio.transcriptions.create({
 			file,
 			model: "whisper-1",

@@ -103,25 +103,33 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 
 		if (phase === "preview") {
 			if (captureMode === "camera" || captureMode === "screen_with_camera") {
-				navigator.mediaDevices
-					?.getUserMedia({
-						video: { facingMode: { ideal: facingMode } },
-						audio: false,
-					})
-					.then((stream) => {
-						if (!isMounted) {
-							stream.getTracks().forEach((t) => t.stop());
-							return;
-						}
-						if (previewStreamRef.current) {
-							previewStreamRef.current.getTracks().forEach((t) => t.stop());
-						}
-						previewStreamRef.current = stream;
-						setActiveStream(stream);
-					})
-					.catch((err) => {
-						console.warn("Camera preview not accessible:", err);
-					});
+				const hasLiveTracks = previewStreamRef.current?.getVideoTracks().some((t) => t.readyState === "live");
+				// If we don't already have live video tracks, acquire camera
+				if (!hasLiveTracks) {
+					navigator.mediaDevices
+						?.getUserMedia({
+							video: {
+								facingMode: { ideal: facingMode },
+								width: { ideal: 1280 },
+								height: { ideal: 720 },
+							},
+							audio: false,
+						})
+						.then((stream) => {
+							if (!isMounted) {
+								stream.getTracks().forEach((t) => t.stop());
+								return;
+							}
+							if (previewStreamRef.current && previewStreamRef.current !== stream) {
+								previewStreamRef.current.getTracks().forEach((t) => t.stop());
+							}
+							previewStreamRef.current = stream;
+							setActiveStream(stream);
+						})
+						.catch((err) => {
+							console.warn("Camera preview not accessible:", err);
+						});
+				}
 			} else {
 				// Screen mode
 				if (previewStreamRef.current) {
@@ -134,12 +142,21 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 
 		return () => {
 			isMounted = false;
+			// DO NOT stop previewStreamRef tracks here because moving to "countdown" or "recording"
+			// reuses these active tracks! Teardown happens on unmount or cancel.
+		};
+	}, [phase, captureMode, facingMode]);
+
+	// Full stream teardown only when component unmounts
+	useEffect(() => {
+		return () => {
 			if (previewStreamRef.current) {
 				previewStreamRef.current.getTracks().forEach((t) => t.stop());
 				previewStreamRef.current = null;
 			}
+			captureEngineRef.current?.cancel();
 		};
-	}, [phase, captureMode, facingMode]);
+	}, []);
 
 	// Ensure video element always binds and plays active stream
 	useEffect(() => {
@@ -218,21 +235,21 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				existingStream: captureMode === "camera" ? previewStreamRef.current : null,
 			});
 
-			// If screen capture was selected, release camera preview tracks
-			if (captureMode !== "camera" && previewStreamRef.current) {
-				previewStreamRef.current.getTracks().forEach((t) => t.stop());
-				previewStreamRef.current = null;
+			// If screen capture was selected, release camera preview and bind screen stream
+			if (captureMode !== "camera") {
+				if (previewStreamRef.current) {
+					previewStreamRef.current.getTracks().forEach((t) => t.stop());
+					previewStreamRef.current = null;
+				}
+				setActiveStream(stream);
+				if (videoRef.current) {
+					videoRef.current.srcObject = stream;
+					videoRef.current.muted = true;
+					videoRef.current.play().catch(() => {});
+				}
 			}
 
-			// 2. Set the prepared engine stream as the active stream in the viewfinder
-			setActiveStream(stream);
-			if (videoRef.current) {
-				videoRef.current.srcObject = stream;
-				videoRef.current.muted = true;
-				videoRef.current.play().catch(() => {});
-			}
-
-			// 3. Start countdown overlay
+			// 2. Start countdown overlay
 			setPhase("countdown");
 			setCountdown(3);
 			setIsStarting(false);
@@ -322,6 +339,10 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 		try {
 			const { blob, durationSeconds, mimeType } = await engine.stop();
 			setUploadProgress(35);
+
+			if (!blob || blob.size === 0) {
+				throw new Error("Recorded video is empty (0 bytes). Please verify camera permissions and record again.");
+			}
 
 			// 1. Request Presigned Upload URL with user-chosen title and accurate detected MIME type
 			const detectedMime = mimeType || blob.type || "video/webm";
@@ -488,77 +509,81 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				</form>
 			)}
 
-			{/* Phase: Preview & Setup */}
-			{!isValidating && phase === "preview" && (
+			{/* Phase: Active Viewfinder Studio (Preview, Countdown, & Recording share the exact same persistent video element) */}
+			{!isValidating && (phase === "preview" || phase === "countdown" || phase === "recording") && (
 				<div className="space-y-4">
-					{/* Mode Selector (Camera-first) */}
-					<div className="grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700/60 text-[11px] font-mono">
-						<button
-							type="button"
-							onClick={() => setCaptureMode("camera")}
-							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
-								captureMode === "camera"
-									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-							}`}
-						>
-							📱 Camera
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								if (hasDisplayMediaSupport) {
-									setCaptureMode("screen");
-								} else {
-									setErrorMessage("Screen recording is not supported on mobile browsers. Please use Camera mode.");
-								}
-							}}
-							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
-								captureMode === "screen"
-									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: hasDisplayMediaSupport
-										? "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-										: "text-neutral-400 dark:text-neutral-600 opacity-60"
-							}`}
-							title={hasDisplayMediaSupport ? "Record Screen" : "Screen capture is only supported on Desktop"}
-						>
-							🖥️ Screen{!hasDisplayMediaSupport && " (PC)"}
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								if (hasDisplayMediaSupport) {
-									setCaptureMode("screen_with_camera");
-								} else {
-									setErrorMessage("Screen recording is not supported on mobile browsers. Please use Camera mode.");
-								}
-							}}
-							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
-								captureMode === "screen_with_camera"
-									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: hasDisplayMediaSupport
-										? "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-										: "text-neutral-400 dark:text-neutral-600 opacity-60"
-							}`}
-							title={hasDisplayMediaSupport ? "Record Screen with Camera" : "Screen capture is only supported on Desktop"}
-						>
-							💻 Screen+Cam{!hasDisplayMediaSupport && " (PC)"}
-						</button>
-					</div>
+					{/* Mode Selector (only in preview phase) */}
+					{phase === "preview" && (
+						<div className="grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700/60 text-[11px] font-mono">
+							<button
+								type="button"
+								onClick={() => setCaptureMode("camera")}
+								className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
+									captureMode === "camera"
+										? "bg-emerald-500 text-neutral-950 shadow-sm"
+										: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+								}`}
+							>
+								📱 Camera
+							</button>
+							<button
+								type="button"
+								onClick={() => {
+									if (hasDisplayMediaSupport) {
+										setCaptureMode("screen");
+									} else {
+										setErrorMessage("Screen recording is not supported on mobile browsers. Please use Camera mode.");
+									}
+								}}
+								className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
+									captureMode === "screen"
+										? "bg-emerald-500 text-neutral-950 shadow-sm"
+										: hasDisplayMediaSupport
+											? "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+											: "text-neutral-400 dark:text-neutral-600 opacity-60"
+								}`}
+								title={hasDisplayMediaSupport ? "Record Screen" : "Screen capture is only supported on Desktop"}
+							>
+								🖥️ Screen{!hasDisplayMediaSupport && " (PC)"}
+							</button>
+							<button
+								type="button"
+								onClick={() => {
+									if (hasDisplayMediaSupport) {
+										setCaptureMode("screen_with_camera");
+									} else {
+										setErrorMessage("Screen recording is not supported on mobile browsers. Please use Camera mode.");
+									}
+								}}
+								className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
+									captureMode === "screen_with_camera"
+										? "bg-emerald-500 text-neutral-950 shadow-sm"
+										: hasDisplayMediaSupport
+											? "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+											: "text-neutral-400 dark:text-neutral-600 opacity-60"
+								}`}
+								title={hasDisplayMediaSupport ? "Record Screen with Camera" : "Screen capture is only supported on Desktop"}
+							>
+								💻 Screen+Cam{!hasDisplayMediaSupport && " (PC)"}
+							</button>
+						</div>
+					)}
 
-					{/* Title Input */}
-					<div>
-						<input
-							type="text"
-							placeholder="Video title (e.g. Mobile walkthrough / Bug note)..."
-							value={videoTitle}
-							onChange={(e) => setVideoTitle(e.target.value)}
-							className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"
-						/>
-					</div>
+					{/* Title Input (only in preview phase) */}
+					{phase === "preview" && (
+						<div>
+							<input
+								type="text"
+								placeholder="Video title (e.g. Mobile walkthrough / Bug note)..."
+								value={videoTitle}
+								onChange={(e) => setVideoTitle(e.target.value)}
+								className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"
+							/>
+						</div>
+					)}
 
-					{/* Viewfinder: Camera or Screen placeholder */}
-					{captureMode === "screen" ? (
+					{/* Persistent Viewfinder: Video element is NEVER unmounted between preview, countdown, and recording */}
+					{captureMode === "screen" && phase === "preview" ? (
 						<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/50 dark:bg-neutral-900/50 aspect-video flex flex-col items-center justify-center p-6 text-center space-y-2">
 							<span className="text-3xl">🖥️</span>
 							<p className="text-xs font-mono text-global-text font-bold">Screen Capture Ready</p>
@@ -567,7 +592,9 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							</p>
 						</div>
 					) : (
-						<div className="relative rounded-xl overflow-hidden bg-black aspect-video border border-neutral-800 shadow-inner flex items-center justify-center">
+						<div className={`relative rounded-xl overflow-hidden bg-black aspect-video border shadow-inner flex items-center justify-center transition-all ${
+							phase === "recording" ? "border-rose-500/60 ring-2 ring-rose-500/20" : "border-neutral-800"
+						}`}>
 							<video
 								ref={(el) => {
 									videoRef.current = el;
@@ -580,107 +607,90 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								autoPlay
 								muted
 								playsInline
-								className={`w-full h-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""}`}
+								className={`w-full h-full object-cover ${facingMode === "user" && captureMode === "camera" ? "-scale-x-100" : ""}`}
 							/>
 
-							{/* Switch Camera Button (Front/Back) */}
-							<button
-								type="button"
-								onClick={toggleFacingMode}
-								className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-white text-[11px] font-mono flex items-center gap-1.5 hover:bg-black/90 transition-all cursor-pointer z-10"
-								title="Flip Front/Rear Camera"
-							>
-								<span>🔄</span>
-								<span>{facingMode === "user" ? "Rear Cam" : "Front Cam"}</span>
-							</button>
-						</div>
-					)}
-
-					{/* Mic Toggle */}
-					<div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 text-xs">
-						<span className="text-neutral-700 dark:text-neutral-300 font-mono">Microphone Audio</span>
-						<label className="relative inline-flex items-center cursor-pointer">
-							<input
-								type="checkbox"
-								checked={enableMic}
-								onChange={(e) => setEnableMic(e.target.checked)}
-								className="sr-only peer"
-							/>
-							<div className="w-9 h-5 bg-neutral-400 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-						</label>
-					</div>
-
-					{/* Visible Error Notification in Preview Phase */}
-					{errorMessage && (
-						<div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-mono leading-relaxed flex items-start gap-2">
-							<span>⚠️</span>
-							<span>{errorMessage}</span>
-						</div>
-					)}
-
-					{/* Big Touch-Friendly Record Button */}
-					<div className="pt-1">
-						<button
-							type="button"
-							disabled={isStarting}
-							onClick={startRecordingWorkflow}
-							className="w-full flex items-center justify-center gap-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] py-3.5 text-sm font-bold text-white shadow-lg shadow-rose-900/20 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-						>
-							{isStarting ? (
-								<>
-									<div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-									<span>Preparing Camera & Mic...</span>
-								</>
-							) : (
-								<>
-									<div className="h-4 w-4 rounded-full bg-white animate-ping" />
-									<span>Start Recording</span>
-								</>
+							{/* Switch Camera Button (Front/Back) - only in preview */}
+							{phase === "preview" && captureMode === "camera" && (
+								<button
+									type="button"
+									onClick={toggleFacingMode}
+									className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-white text-[11px] font-mono flex items-center gap-1.5 hover:bg-black/90 transition-all cursor-pointer z-10"
+									title="Flip Front/Rear Camera"
+								>
+									<span>🔄</span>
+									<span>{facingMode === "user" ? "Rear Cam" : "Front Cam"}</span>
+								</button>
 							)}
-						</button>
-					</div>
-				</div>
-			)}
 
-			{/* Phase: Countdown & Active Recording (Keep live viewfinder continuously mounted!) */}
-			{!isValidating && (phase === "countdown" || phase === "recording") && (
-				<div className="space-y-4 text-center">
-					{/* Live Camera / Screen Viewfinder */}
-					<div className="relative rounded-xl overflow-hidden bg-black aspect-video border border-rose-500/50 shadow-inner flex items-center justify-center">
-						<video
-							ref={(el) => {
-								videoRef.current = el;
-								if (el && activeStream && el.srcObject !== activeStream) {
-									el.srcObject = activeStream;
-									el.muted = true;
-									el.play().catch(() => {});
-								}
-							}}
-							autoPlay
-							muted
-							playsInline
-							className={`w-full h-full object-cover ${facingMode === "user" && captureMode === "camera" ? "-scale-x-100" : ""}`}
-						/>
+							{/* Countdown Overlay directly on top of live stream */}
+							{phase === "countdown" && (
+								<div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center z-20">
+									<p className="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold mb-1">Get Ready</p>
+									<div className="text-7xl font-extrabold text-white font-mono animate-bounce">{countdown}</div>
+								</div>
+							)}
 
-						{/* Countdown Overlay directly on top of live stream */}
-						{phase === "countdown" && (
-							<div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center z-20">
-								<p className="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold mb-1">Get Ready</p>
-								<div className="text-7xl font-extrabold text-white font-mono animate-bounce">{countdown}</div>
+							{/* Live Recording Badge */}
+							{phase === "recording" && (
+								<div className="absolute top-3 left-3 flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-white text-xs font-mono z-10">
+									<span className={`h-2.5 w-2.5 rounded-full ${isPaused ? "bg-amber-400" : "bg-rose-500 animate-pulse"}`} />
+									<span>{formatTime(elapsedSeconds)}</span>
+								</div>
+							)}
+						</div>
+					)}
+
+					{/* Below Viewfinder Controls */}
+					{phase === "preview" && (
+						<>
+							{/* Mic Toggle */}
+							<div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 text-xs">
+								<span className="text-neutral-700 dark:text-neutral-300 font-mono">Microphone Audio</span>
+								<label className="relative inline-flex items-center cursor-pointer">
+									<input
+										type="checkbox"
+										checked={enableMic}
+										onChange={(e) => setEnableMic(e.target.checked)}
+										className="sr-only peer"
+									/>
+									<div className="w-9 h-5 bg-neutral-400 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+								</label>
 							</div>
-						)}
 
-						{/* Live Recording Badge */}
-						{phase === "recording" && (
-							<div className="absolute top-3 left-3 flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-white text-xs font-mono z-10">
-								<span className={`h-2.5 w-2.5 rounded-full ${isPaused ? "bg-amber-400" : "bg-rose-500 animate-pulse"}`} />
-								<span>{formatTime(elapsedSeconds)}</span>
+							{/* Visible Error Notification in Preview Phase */}
+							{errorMessage && (
+								<div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-mono leading-relaxed flex items-start gap-2">
+									<span>⚠️</span>
+									<span>{errorMessage}</span>
+								</div>
+							)}
+
+							{/* Big Touch-Friendly Record Button */}
+							<div className="pt-1">
+								<button
+									type="button"
+									disabled={isStarting}
+									onClick={startRecordingWorkflow}
+									className="w-full flex items-center justify-center gap-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] py-3.5 text-sm font-bold text-white shadow-lg shadow-rose-900/20 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+								>
+									{isStarting ? (
+										<>
+											<div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+											<span>Preparing Camera & Mic...</span>
+										</>
+									) : (
+										<>
+											<div className="h-4 w-4 rounded-full bg-white animate-ping" />
+											<span>Start Recording</span>
+										</>
+									)}
+								</button>
 							</div>
-						)}
-					</div>
+						</>
+					)}
 
-					{/* Action Bar */}
-					{phase === "countdown" ? (
+					{phase === "countdown" && (
 						<div className="pt-1">
 							<button
 								type="button"
@@ -690,7 +700,9 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								Cancel
 							</button>
 						</div>
-					) : (
+					)}
+
+					{phase === "recording" && (
 						<div className="grid grid-cols-3 gap-2 pt-1">
 							<button
 								type="button"

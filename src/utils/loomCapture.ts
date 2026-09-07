@@ -416,6 +416,13 @@ export class LoomCaptureEngine {
 			};
 
 			if (this.mediaRecorder.state !== "inactive") {
+				try {
+					if (typeof this.mediaRecorder.requestData === "function") {
+						this.mediaRecorder.requestData();
+					}
+				} catch {
+					// ignore if not supported in current recorder state
+				}
 				this.mediaRecorder.stop();
 			} else {
 				this.cleanup();
