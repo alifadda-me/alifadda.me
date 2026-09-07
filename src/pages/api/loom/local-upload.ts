@@ -46,11 +46,9 @@ export const PUT: APIRoute = async ({ request, url }) => {
 
 	try {
 		const arrayBuffer = await request.arrayBuffer();
-		const buffer = Buffer.from(arrayBuffer);
-
 		const targetDir = path.dirname(targetFilePath);
 		await fs.mkdir(targetDir, { recursive: true });
-		await fs.writeFile(targetFilePath, buffer);
+		await fs.writeFile(targetFilePath, new Uint8Array(arrayBuffer));
 
 		return new Response(JSON.stringify({ success: true, key }), {
 			status: 200,

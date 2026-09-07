@@ -53,8 +53,8 @@ export function isAuthorized(providedKey: string | null | undefined): boolean {
 	const cleanProvided = providedKey.trim().replace(/^["']|["']$/g, "");
 
 	// Constant-time SHA-256 comparison to prevent side-channel timing attacks
-	const secretHash = crypto.createHash("sha256").update(cleanSecret).digest();
-	const providedHash = crypto.createHash("sha256").update(cleanProvided).digest();
+	const secretHash = new Uint8Array(crypto.createHash("sha256").update(cleanSecret).digest());
+	const providedHash = new Uint8Array(crypto.createHash("sha256").update(cleanProvided).digest());
 
 	return crypto.timingSafeEqual(secretHash, providedHash);
 }

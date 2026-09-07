@@ -29,7 +29,7 @@ export const GET: APIRoute = async ({ url }) => {
 		const ext = path.extname(filePath).toLowerCase();
 		const contentType = ext === ".mp4" ? "video/mp4" : "video/webm";
 
-		return new Response(fileBuffer, {
+		return new Response(new Uint8Array(fileBuffer), {
 			status: 200,
 			headers: {
 				"Content-Type": contentType,
