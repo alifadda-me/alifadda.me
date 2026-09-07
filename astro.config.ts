@@ -25,7 +25,9 @@ import rehypeUnwrapImages from "rehype-unwrap-images";
 
 // https://astro.build/config
 export default defineConfig({
-	adapter: vercel(),
+	adapter: vercel({
+		maxDuration: 60,
+	}),
 	site: siteConfig.url,
 	image: {
 		domains: ["webmention.io"],

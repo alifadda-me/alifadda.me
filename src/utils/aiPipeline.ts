@@ -29,10 +29,11 @@ export async function processVideoAI(
 		return;
 	}
 
-	const openai = new OpenAI({ apiKey });
+	const openai = new OpenAI({ apiKey, timeout: 45000 });
 
 	try {
-		console.log(`[AI Pipeline] Fetching video file for video ${videoId}: ${videoFileUrl}`);
+		const startTime = Date.now();
+		console.log(`[AI Pipeline] Fetching media file for video ${videoId}: ${videoFileUrl}`);
 		const response = await fetch(videoFileUrl);
 		if (!response.ok) {
 			throw new Error(`Failed to fetch video stream: ${response.status} ${response.statusText}`);
@@ -45,6 +46,7 @@ export async function processVideoAI(
 		const file = new File([audioBlob], fileName, { type: fileType });
 
 		// 1. Whisper Transcription
+		const whisperStart = Date.now();
 		console.log(`[AI Pipeline] Transcribing audio with Whisper for video ${videoId} (${fileName}, ${audioBlob.size} bytes)...`);
 		const transcription = await openai.audio.transcriptions.create({
 			file,
@@ -54,11 +56,14 @@ export async function processVideoAI(
 		});
 
 		const rawTranscript = transcription.text || "";
+		console.log(`[AI Pipeline] Whisper transcription completed in ${Date.now() - whisperStart}ms (${rawTranscript.length} chars)`);
+
 		// transcription.segments has shape [{ start, end, text }, ...]
 		const segments = "segments" in transcription ? (transcription as unknown as { segments: unknown[] }).segments : [];
 
 		// 2. LLM Summarization & Chapter Extraction
-		console.log(`[AI Pipeline] Extracting summary and chapters with gpt-4o-mini...`);
+		const llmStart = Date.now();
+		console.log(`[AI Pipeline] Extracting summary and chapters with gpt-4o-mini for video ${videoId}...`);
 		const llmPrompt = `
 Analyze the transcript below from an async Loom video recording and return JSON with this exact structure:
 {
@@ -81,6 +86,7 @@ Transcript:
 		});
 
 		const parsed = JSON.parse(llmResult.choices[0]?.message.content || "{}");
+		console.log(`[AI Pipeline] GPT-4o-mini summarization completed in ${Date.now() - llmStart}ms`);
 
 		// 3. Save to Database
 		await saveAiMetadata({
@@ -99,7 +105,7 @@ Transcript:
 
 		await updateVideoStatus(videoId, "ready", finalTitle);
 
-		console.log(`[AI Pipeline] AI enrichment successfully completed for video ${videoId}`);
+		console.log(`[AI Pipeline] AI enrichment successfully completed for video ${videoId} in ${Date.now() - startTime}ms total. Title: "${finalTitle}"`);
 	} catch (error: unknown) {
 		const err = error as { status?: number; message?: string };
 		const isAudioDecodeError =

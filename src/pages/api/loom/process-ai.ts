@@ -76,15 +76,13 @@ export const POST: APIRoute = async ({ request, url }) => {
 			mediaToProcessUrl = `${url.origin}${mediaToProcessUrl}`;
 		}
 
-		// Non-blocking AI execution
-		void processVideoAI(videoId, mediaToProcessUrl, cleanTitle || video.title, hasAudio !== false).catch((err) => {
-			console.error(`AI background pipeline error for ${videoId}:`, err);
-		});
+		// Await AI pipeline so Vercel Serverless execution environment does not freeze
+		await processVideoAI(videoId, mediaToProcessUrl, cleanTitle || video.title, hasAudio !== false);
 
 		return new Response(
 			JSON.stringify({
 				success: true,
-				message: "AI enrichment pipeline scheduled",
+				message: "AI enrichment completed successfully",
 				videoId,
 			}),
 			{
