@@ -9,10 +9,12 @@ import type { SiteMeta } from "@/types";
 
 interface Props {
 	meta: SiteMeta;
+	wide?: boolean;
 }
 
 const {
 	meta: { articleDate, description = siteConfig.description, ogImage, title },
+	wide = false,
 } = Astro.props;
 ---
 
@@ -21,12 +23,15 @@ const {
 		<BaseHead articleDate={articleDate} description={description} ogImage={ogImage} title={title} />
 	</head>
 	<body
-		class="bg-global-bg text-global-text mx-auto flex min-h-screen max-w-3xl flex-col px-4 pt-16 font-mono text-sm font-normal antialiased sm:px-8"
+		class:list={[
+			"bg-global-bg text-global-text mx-auto flex min-h-screen flex-col px-4 pt-8 sm:pt-12 font-mono text-sm font-normal antialiased sm:px-8",
+			wide ? "max-w-5xl" : "max-w-3xl",
+		]}
 	>
 		<ThemeProvider />
 		<SkipLink />
-		<Header />
-		<main id="main">
+		<Header compact={wide} />
+		<main id="main" class="w-full">
 			<slot />
 		</main>
 		<Footer />

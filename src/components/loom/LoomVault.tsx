@@ -181,7 +181,7 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 
 	if (isLoading) {
 		return (
-			<div className="py-16 text-center text-xs font-mono text-global-text/60">
+			<div className="py-16 text-center text-xs font-mono text-neutral-500 dark:text-neutral-400">
 				Verifying access to private vault...
 			</div>
 		);
@@ -189,13 +189,13 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 
 	if (!isUnlocked) {
 		return (
-			<div className="w-full max-w-md mx-auto rounded-2xl border border-global-text/15 bg-global-bg p-6 text-global-text font-mono shadow-lg my-4">
-				<div className="flex items-center gap-2.5 mb-3 border-b border-global-text/10 pb-3">
+			<div className="w-full max-w-md mx-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-global-bg p-6 text-global-text font-mono shadow-lg my-4">
+				<div className="flex items-center gap-2.5 mb-3 border-b border-neutral-200 dark:border-neutral-800 pb-3">
 					<span className="text-base">🔒</span>
 					<h2 className="text-sm font-bold text-global-text">Private Video Vault</h2>
 				</div>
-				<p className="text-xs text-global-text/70 mb-4 leading-relaxed">
-					This archive is restricted to the site owner. Enter your <code className="bg-global-text/10 px-1 py-0.5 rounded">RECORD_SECRET</code> to view recorded videos:
+				<p className="text-xs text-neutral-600 dark:text-neutral-300 mb-4 leading-relaxed">
+					This archive is restricted to the site owner. Enter your <code className="bg-neutral-200 dark:bg-neutral-800 px-1 py-0.5 rounded">RECORD_SECRET</code> to view recorded videos:
 				</p>
 				<form onSubmit={handleUnlock} className="space-y-3">
 					<input
@@ -203,9 +203,9 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 						placeholder="Enter secret key..."
 						value={key}
 						onChange={(e) => setKey(e.target.value)}
-						className="w-full rounded-lg border border-global-text/20 bg-global-bg px-3.5 py-2 text-xs text-global-text placeholder-global-text/40 focus:border-emerald-500 focus:outline-none"
+						className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"
 					/>
-					{error && <p className="text-xs text-rose-500">{error}</p>}
+					{error && <p className="text-xs text-rose-500 font-mono">{error}</p>}
 					<button
 						type="submit"
 						className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 py-2.5 text-xs font-bold text-neutral-950 transition-colors cursor-pointer"
@@ -220,7 +220,7 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 	return (
 		<div className="space-y-5 font-mono text-global-text">
 			{/* Vault Controls Bar */}
-			<div className="flex items-center justify-between border-b border-global-text/15 pb-3">
+			<div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
 				<div>
 					<h1 className="text-lg sm:text-xl font-bold text-global-text flex items-center gap-2">
 						<span>Video Vault</span>
@@ -228,7 +228,7 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 							Admin Only
 						</span>
 					</h1>
-					<p className="text-xs text-global-text/60 mt-0.5">
+					<p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
 						Private library ({videos.length} recordings)
 					</p>
 				</div>
@@ -246,8 +246,8 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 
 			{/* Videos Grid */}
 			{videos.length === 0 ? (
-				<div className="rounded-xl border border-dashed border-global-text/20 p-8 text-center space-y-2">
-					<p className="text-xs text-global-text/60">No videos recorded yet.</p>
+				<div className="rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 p-8 text-center space-y-2">
+					<p className="text-xs text-neutral-500 dark:text-neutral-400">No videos recorded yet.</p>
 					<a
 						href="/loom/record"
 						className="inline-block text-xs text-emerald-600 dark:text-emerald-400 font-bold underline"
@@ -261,10 +261,10 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 						<a
 							key={vid.id}
 							href={`/loom/${vid.id}`}
-							className="group flex flex-col justify-between rounded-xl border border-global-text/15 bg-global-bg p-4 hover:border-emerald-500/50 hover:shadow-md transition-all duration-200 shadow-sm"
+							className="group flex flex-col justify-between rounded-xl border border-neutral-200 dark:border-neutral-800 bg-global-bg p-4 hover:border-emerald-500/50 hover:shadow-md transition-all duration-200 shadow-sm"
 						>
 							<div className="space-y-1.5">
-								<div className="flex items-center justify-between text-[11px] text-global-text/60">
+								<div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400">
 									<span>{formatDate(vid.created_at)}</span>
 									<span
 										className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${
@@ -284,7 +284,7 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 								</h2>
 							</div>
 
-							<div className="flex items-center justify-between pt-3 mt-3 border-t border-global-text/10 text-xs text-global-text/60">
+							<div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
 								<span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
 									<span>⏱</span>
 									<span>{formatDuration(vid.duration_seconds)}</span>
@@ -301,7 +301,7 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 									<button
 										type="button"
 										onClick={(e) => handleEditTitle(vid.id, vid.title, e)}
-										className="inline-flex items-center gap-1 rounded bg-global-text/5 hover:bg-global-text/10 text-global-text/80 border border-global-text/15 px-2 py-0.5 text-[11px] font-semibold cursor-pointer transition-colors"
+										className="inline-flex items-center gap-1 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-[11px] font-semibold cursor-pointer transition-colors"
 										title="Rename video"
 									>
 										<span>✏️ Rename</span>
@@ -309,7 +309,7 @@ export default function LoomVault({ initialKey = "" }: LoomVaultProps) {
 									<button
 										type="button"
 										onClick={(e) => handleDeleteVideo(vid.id, e)}
-										className="text-rose-500/70 hover:text-rose-600 dark:hover:text-rose-400 p-0.5 text-[11px] hover:underline cursor-pointer transition-colors"
+										className="text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 p-0.5 text-[11px] hover:underline cursor-pointer transition-colors"
 										title="Delete video"
 									>
 										Delete

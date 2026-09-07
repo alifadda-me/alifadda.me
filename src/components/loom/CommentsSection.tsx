@@ -72,8 +72,8 @@ export default function CommentsSection({
 	return (
 		<div className="w-full space-y-5 font-mono text-global-text">
 			{/* Form: Add Timestamped Comment */}
-			<div className="rounded-xl border border-global-text/15 bg-global-bg p-4 sm:p-5 shadow-sm">
-				<div className="flex items-center justify-between mb-3 border-b border-global-text/10 pb-2">
+			<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-global-bg p-4 sm:p-5 shadow-sm">
+				<div className="flex items-center justify-between mb-3 border-b border-neutral-200 dark:border-neutral-800 pb-2">
 					<h3 className="text-xs font-bold uppercase tracking-wider text-global-text">Leave a Time-Stamped Comment</h3>
 					<button
 						type="button"
@@ -92,7 +92,7 @@ export default function CommentsSection({
 							placeholder="Your Name (optional)"
 							value={authorName}
 							onChange={(e) => setAuthorName(e.target.value)}
-							className="w-full sm:w-1/3 rounded-lg border border-global-text/20 bg-global-bg px-3 py-2 text-xs text-global-text placeholder-global-text/40 focus:border-emerald-500 focus:outline-none"
+							className="w-full sm:w-1/3 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"
 						/>
 
 						{/* Emoji Reaction Selector */}
@@ -105,7 +105,7 @@ export default function CommentsSection({
 									className={`text-sm p-1.5 rounded border transition-all cursor-pointer ${
 										selectedEmoji === emoji
 											? "border-emerald-500 bg-emerald-500/20 scale-110"
-											: "border-global-text/15 bg-global-text/5 hover:bg-global-text/10"
+											: "border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
 									}`}
 								>
 									{emoji}
@@ -120,7 +120,7 @@ export default function CommentsSection({
 							placeholder={`Write your note or question for ${formatTime(activeTimestamp)}...`}
 							value={commentText}
 							onChange={(e) => setCommentText(e.target.value)}
-							className="w-full rounded-lg border border-global-text/20 bg-global-bg px-3 py-2 text-xs text-global-text placeholder-global-text/40 focus:border-emerald-500 focus:outline-none resize-none"
+							className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none resize-none font-mono"
 							required
 						/>
 					</div>
@@ -141,13 +141,13 @@ export default function CommentsSection({
 
 			{/* Comments Stream */}
 			<div className="space-y-2.5">
-				<div className="flex items-center justify-between text-xs text-global-text/60 px-1">
+				<div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400 px-1">
 					<span>Discussion ({comments.length})</span>
 					<span>Click timestamp to jump</span>
 				</div>
 
 				{comments.length === 0 ? (
-					<div className="rounded-xl border border-dashed border-global-text/15 p-6 text-center text-xs text-global-text/50">
+					<div className="rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 p-6 text-center text-xs text-neutral-500 dark:text-neutral-400">
 						No comments yet. Pause the video or click timestamp above to comment.
 					</div>
 				) : (
@@ -155,7 +155,7 @@ export default function CommentsSection({
 						{comments.map((c) => (
 							<div
 								key={c.id}
-								className="flex items-start justify-between gap-3 p-3 rounded-lg border border-global-text/15 bg-global-bg hover:border-global-text/30 transition-colors shadow-sm"
+								className="flex items-start justify-between gap-3 p-3.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-global-bg hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors shadow-sm"
 							>
 								<div className="space-y-1">
 									<div className="flex items-center gap-2">
@@ -173,10 +173,10 @@ export default function CommentsSection({
 											<span className="text-xs">{c.emoji_reaction}</span>
 										)}
 									</div>
-									<p className="text-xs text-global-text/90 leading-relaxed pl-1">{c.body}</p>
+									<p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed pl-1">{c.body}</p>
 								</div>
 
-								<span className="text-[10px] text-global-text/50 shrink-0">
+								<span className="text-[10px] text-neutral-500 dark:text-neutral-400 shrink-0">
 									{new Date(c.created_at).toLocaleDateString("en-GB", {
 										month: "short",
 										day: "numeric",

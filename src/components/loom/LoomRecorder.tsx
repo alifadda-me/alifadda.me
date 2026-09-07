@@ -327,21 +327,56 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 				throw new Error(errorData.error || "Failed to initialize upload. Ensure RECORD_SECRET matches.");
 			}
 
-			const { videoId, uploadUrl } = await initRes.json();
+			const { videoId, uploadUrl, key } = await initRes.json();
 			setCreatedVideoId(videoId);
 			setUploadProgress(55);
 
-			// 2. Direct binary upload via PUT
-			const uploadRes = await fetch(uploadUrl, {
-				method: "PUT",
-				headers: {
-					"Content-Type": mimeType || "video/webm",
-				},
-				body: blob,
-			});
+			// 2. Binary upload: Attempt direct PUT to R2, automatically falling back to same-origin proxy
+			let uploadSucceeded = false;
+			try {
+				const uploadRes = await fetch(uploadUrl, {
+					method: "PUT",
+					headers: {
+						"Content-Type": mimeType || "video/webm",
+					},
+					body: blob,
+				});
 
-			if (!uploadRes.ok) {
-				throw new Error(`Upload failed with HTTP status ${uploadRes.status}`);
+				if (uploadRes.ok) {
+					uploadSucceeded = true;
+				} else {
+					console.warn(
+						`[LoomRecorder] Direct upload returned status ${uploadRes.status}. Falling back to server-side proxy...`,
+					);
+				}
+			} catch (directErr) {
+				console.warn(
+					"[LoomRecorder] Direct upload blocked (CORS / network). Falling back to server-side proxy...",
+					directErr,
+				);
+			}
+
+			if (!uploadSucceeded) {
+				setUploadProgress(65);
+				const proxyRes = await fetch(
+					`/api/loom/proxy-upload?videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(key || `videos/${videoId}.webm`)}`,
+					{
+						method: "POST",
+						headers: {
+							"Content-Type": mimeType || "video/webm",
+							"X-Record-Key": recordKey,
+						},
+						body: blob,
+					},
+				);
+
+				if (!proxyRes.ok) {
+					const proxyErr = await proxyRes.json().catch(() => ({}));
+					throw new Error(
+						proxyErr.error ||
+							"Upload failed. If direct uploads are blocked by CORS, please add CORS rules in Cloudflare R2 bucket settings.",
+					);
+				}
 			}
 
 			setUploadProgress(85);
@@ -372,9 +407,9 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 	};
 
 	return (
-		<div className="w-full max-w-xl mx-auto rounded-2xl border border-global-text/15 bg-global-bg p-5 sm:p-7 shadow-xl text-global-text transition-all">
+		<div className="w-full max-w-xl mx-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-global-bg p-5 sm:p-7 shadow-xl text-global-text transition-all">
 			{/* Top Bar */}
-			<div className="flex items-center justify-between border-b border-global-text/10 pb-3 mb-5">
+			<div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3 mb-5">
 				<div className="flex items-center gap-2.5">
 					<div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
 					<h2 className="text-base font-bold tracking-tight text-global-text">Video Studio</h2>
@@ -386,7 +421,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 
 			{/* Verifying Spinner */}
 			{isValidating && (
-				<div className="py-12 text-center text-xs font-mono text-global-text/60 animate-pulse">
+				<div className="py-12 text-center text-xs font-mono text-neutral-500 dark:text-neutral-400 animate-pulse">
 					Verifying studio credentials...
 				</div>
 			)}
@@ -394,8 +429,8 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			{/* Phase: Auth Form */}
 			{!isValidating && phase === "auth" && (
 				<form onSubmit={handleKeySubmit} className="space-y-4">
-					<p className="text-xs text-global-text/75 leading-relaxed">
-						Please enter your <code className="bg-global-text/10 px-1 py-0.5 rounded">RECORD_SECRET</code> key to unlock the capture studio:
+					<p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+						Please enter your <code className="bg-neutral-200 dark:bg-neutral-800 px-1 py-0.5 rounded">RECORD_SECRET</code> key to unlock the capture studio:
 					</p>
 					<div>
 						<input
@@ -403,7 +438,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							placeholder="Enter secret key..."
 							value={recordKey}
 							onChange={(e) => setRecordKey(e.target.value)}
-							className="w-full rounded-lg border border-global-text/20 bg-global-bg px-3.5 py-2.5 text-xs text-global-text placeholder-global-text/40 focus:border-emerald-500 focus:outline-none font-mono"
+							className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"
 						/>
 					</div>
 					{errorMessage && <p className="text-xs text-rose-500 font-mono">{errorMessage}</p>}
@@ -421,14 +456,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			{!isValidating && phase === "preview" && (
 				<div className="space-y-4">
 					{/* Mode Selector (Camera-first) */}
-					<div className="grid grid-cols-3 gap-1.5 p-1 bg-global-text/5 rounded-xl border border-global-text/10 text-[11px] font-mono">
+					<div className="grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700/60 text-[11px] font-mono">
 						<button
 							type="button"
 							onClick={() => setCaptureMode("camera")}
 							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
 								captureMode === "camera"
 									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: "text-global-text/70 hover:text-global-text"
+									: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
 							}`}
 						>
 							📱 Camera
@@ -439,7 +474,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
 								captureMode === "screen"
 									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: "text-global-text/70 hover:text-global-text"
+									: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
 							}`}
 						>
 							🖥️ Screen
@@ -450,7 +485,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							className={`py-2 px-1 rounded-lg font-semibold transition-all cursor-pointer text-center ${
 								captureMode === "screen_with_camera"
 									? "bg-emerald-500 text-neutral-950 shadow-sm"
-									: "text-global-text/70 hover:text-global-text"
+									: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
 							}`}
 						>
 							💻 Screen+Cam
@@ -464,21 +499,21 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							placeholder="Video title (e.g. Mobile walkthrough / Bug note)..."
 							value={videoTitle}
 							onChange={(e) => setVideoTitle(e.target.value)}
-							className="w-full rounded-lg border border-global-text/20 bg-global-bg px-3.5 py-2 text-xs text-global-text placeholder-global-text/40 focus:border-emerald-500 focus:outline-none"
+							className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-3.5 py-2.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-emerald-500 focus:outline-none font-mono"
 						/>
 					</div>
 
 					{/* Viewfinder: Camera or Screen placeholder */}
 					{captureMode === "screen" ? (
-						<div className="rounded-xl border border-global-text/15 bg-global-text/5 aspect-[4/3] sm:aspect-video flex flex-col items-center justify-center p-6 text-center space-y-2">
+						<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/50 dark:bg-neutral-900/50 aspect-[4/3] sm:aspect-video flex flex-col items-center justify-center p-6 text-center space-y-2">
 							<span className="text-3xl">🖥️</span>
 							<p className="text-xs font-mono text-global-text font-bold">Screen Capture Ready</p>
-							<p className="text-[11px] font-mono text-global-text/60 max-w-xs">
+							<p className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 max-w-xs">
 								Click Start Recording to select the screen, window, or tab you want to share.
 							</p>
 						</div>
 					) : (
-						<div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] sm:aspect-video border border-global-text/15 shadow-inner flex items-center justify-center">
+						<div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] sm:aspect-video border border-neutral-800 shadow-inner flex items-center justify-center">
 							<video
 								ref={(el) => {
 									videoRef.current = el;
@@ -508,8 +543,8 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					)}
 
 					{/* Mic Toggle */}
-					<div className="flex items-center justify-between px-3 py-2 rounded-lg border border-global-text/10 bg-global-text/5 text-xs">
-						<span className="text-global-text/80 font-mono">Microphone Audio</span>
+					<div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 text-xs">
+						<span className="text-neutral-700 dark:text-neutral-300 font-mono">Microphone Audio</span>
 						<label className="relative inline-flex items-center cursor-pointer">
 							<input
 								type="checkbox"
@@ -588,7 +623,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 							<button
 								type="button"
 								onClick={handlePauseResume}
-								className="py-2.5 rounded-lg border border-global-text/20 bg-global-text/5 hover:bg-global-text/10 text-xs font-mono font-semibold text-global-text transition-colors cursor-pointer"
+								className="py-2.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-mono font-semibold text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
 							>
 								{isPaused ? "▶ Resume" : "⏸ Pause"}
 							</button>
@@ -616,16 +651,16 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 			{/* Phase: Uploading */}
 			{phase === "uploading" && (
 				<div className="py-8 space-y-4 text-center">
-					<div className="h-2 w-full bg-global-text/10 rounded-full overflow-hidden">
+					<div className="h-2 w-full bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden">
 						<div
 							className="h-full bg-emerald-500 transition-all duration-300"
 							style={{ width: `${uploadProgress}%` }}
 						/>
 					</div>
-					<p className="text-xs font-mono text-global-text font-semibold">
-						Uploading video directly to storage ({uploadProgress}%)...
+					<p className="text-xs font-mono text-neutral-900 dark:text-neutral-100 font-semibold">
+						Uploading video ({uploadProgress}%)...
 					</p>
-					<p className="text-[11px] font-mono text-global-text/50">
+					<p className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400">
 						Non-blocking ingestion & queued AI enrichment.
 					</p>
 				</div>
@@ -638,8 +673,8 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 						✓
 					</div>
 					<div>
-						<h3 className="text-base font-bold text-global-text">Recording Uploaded!</h3>
-						<p className="text-xs text-global-text/70 mt-1 font-mono">
+						<h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">Recording Uploaded!</h3>
+						<p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 font-mono">
 							Your video is ready to view. AI chapters & summary are generating.
 						</p>
 					</div>
@@ -658,7 +693,7 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 								setCreatedVideoId("");
 								setVideoTitle("");
 							}}
-							className="w-full sm:w-auto rounded-lg border border-global-text/20 bg-global-text/5 hover:bg-global-text/10 px-4 py-2.5 text-xs font-mono font-semibold text-global-text transition-colors cursor-pointer"
+							className="w-full sm:w-auto rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-4 py-2.5 text-xs font-mono font-semibold text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
 						>
 							Record New Video
 						</button>
@@ -672,14 +707,14 @@ export default function LoomRecorder({ initialKey = "" }: LoomRecorderProps) {
 					<div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/20 text-rose-500 text-lg font-bold">
 						!
 					</div>
-					<p className="text-xs text-rose-500 font-mono leading-relaxed">{errorMessage}</p>
+					<p className="text-xs text-rose-500 font-mono leading-relaxed max-w-md mx-auto">{errorMessage}</p>
 					<button
 						type="button"
 						onClick={() => {
 							setErrorMessage("");
 							setPhase("preview");
 						}}
-						className="rounded-lg border border-global-text/20 bg-global-text/5 hover:bg-global-text/10 px-4 py-2 text-xs font-mono text-global-text transition-colors cursor-pointer"
+						className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-4 py-2 text-xs font-mono text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
 					>
 						Back to Setup
 					</button>

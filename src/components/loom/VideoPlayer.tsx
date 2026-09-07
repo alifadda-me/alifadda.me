@@ -395,9 +395,9 @@ export default function VideoPlayer({
 			{/* Chapters & Interactive Transcript Bar */}
 			{/* Chapters, AI Summary & Interactive Transcript Bar */}
 			{(chapters.length > 0 || segments.length > 0 || Boolean(aiSummary)) && (
-				<div className="rounded-xl border border-global-text/15 bg-global-bg p-4 font-mono text-global-text shadow-sm">
+				<div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-global-bg p-4 font-mono text-global-text shadow-sm">
 					{/* Tabs in Order: Chapters -> AI Summary -> Transcript */}
-					<div className="flex items-center gap-4 border-b border-global-text/10 pb-2 mb-3">
+					<div className="flex items-center gap-4 border-b border-neutral-200 dark:border-neutral-800 pb-2 mb-3">
 						{chapters.length > 0 && (
 							<button
 								type="button"
@@ -405,7 +405,7 @@ export default function VideoPlayer({
 								className={`text-xs uppercase font-semibold tracking-wider pb-1 transition-colors cursor-pointer ${
 									activeTab === "chapters"
 										? "border-b-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold"
-										: "text-global-text/60 hover:text-global-text"
+										: "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
 								}`}
 							>
 								Chapters ({chapters.length})
@@ -419,7 +419,7 @@ export default function VideoPlayer({
 								className={`text-xs uppercase font-semibold tracking-wider pb-1 transition-colors cursor-pointer flex items-center gap-1.5 ${
 									activeTab === "summary"
 										? "border-b-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold"
-										: "text-global-text/60 hover:text-global-text"
+										: "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
 								}`}
 							>
 								<span>✨</span>
@@ -434,7 +434,7 @@ export default function VideoPlayer({
 								className={`text-xs uppercase font-semibold tracking-wider pb-1 transition-colors cursor-pointer ${
 									activeTab === "transcript"
 										? "border-b-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold"
-										: "text-global-text/60 hover:text-global-text"
+										: "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
 								}`}
 							>
 								Transcript
@@ -458,11 +458,11 @@ export default function VideoPlayer({
 										className={`flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
 											isCurrent
 												? "bg-emerald-500/15 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-medium"
-												: "bg-global-text/5 border border-global-text/10 text-global-text/85 hover:bg-global-text/10"
+												: "bg-neutral-100 dark:bg-neutral-800/70 border border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700"
 										}`}
 									>
 										<span className="truncate pr-2 font-medium">{ch.title}</span>
-										<span className="font-mono text-[10px] text-global-text/70 bg-global-text/10 px-1.5 py-0.5 rounded">
+										<span className="font-mono text-[10px] text-neutral-600 dark:text-neutral-400 bg-neutral-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded">
 											{formatTime(ch.time)}
 										</span>
 									</button>
@@ -478,7 +478,7 @@ export default function VideoPlayer({
 								<span>✨</span>
 								<span>Key Takeaways & Summary</span>
 							</div>
-							<div className="text-xs text-global-text/90 leading-relaxed space-y-2 whitespace-pre-wrap font-sans">
+							<div className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed space-y-2 whitespace-pre-wrap font-sans">
 								{aiSummary}
 							</div>
 						</div>
@@ -495,8 +495,8 @@ export default function VideoPlayer({
 										onClick={() => seekTo(seg.start)}
 										className={`flex items-start gap-2 p-1.5 rounded cursor-pointer transition-colors ${
 											isCurrent
-												? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-												: "text-global-text/80 hover:bg-global-text/5"
+												? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium"
+												: "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
 										}`}
 									>
 										<span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 shrink-0 pt-0.5 font-bold">

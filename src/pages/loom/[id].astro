@@ -68,14 +68,8 @@ const formatDate = (dateString: string) => {
 };
 ---
 
-<PageLayout meta={{ title: `${video.title} - Ali Fadda` }}>
-	<style is:global>
-		#main-header {
-			margin-bottom: 1.5rem !important;
-		}
-	</style>
-
-	<div class="space-y-4 font-mono max-w-4xl mx-auto">
+<PageLayout meta={{ title: `${video.title} - Ali Fadda` }} wide={true}>
+	<div class="space-y-4 font-mono w-full">
 		{/* Compact Header: Title & Meta Info */}
 		<div class="border-b border-global-text/15 pb-3">
 			<div class="flex items-center gap-2 text-xs text-global-text/70 mb-1.5">

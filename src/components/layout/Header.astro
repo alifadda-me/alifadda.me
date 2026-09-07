@@ -2,9 +2,21 @@
 import Search from "@/components/Search.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import { menuLinks } from "@/site.config";
+
+interface Props {
+	compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
 ---
 
-<header class="group relative mb-28 flex items-center sm:ps-18" id="main-header">
+<header
+	class:list={[
+		"group relative flex items-center sm:ps-18",
+		compact ? "mb-6 sm:mb-8" : "mb-10 sm:mb-14",
+	]}
+	id="main-header"
+>
 	<div class="flex sm:flex-col">
 		<a
 			aria-current={Astro.url.pathname === "/" ? "page" : false}

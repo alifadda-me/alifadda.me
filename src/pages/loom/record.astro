@@ -9,13 +9,7 @@ const queryKey = Astro.url.searchParams.get("key");
 const effectiveKey = (queryKey && isAuthorized(queryKey)) ? queryKey : "";
 ---
 
-<PageLayout meta={{ title: "Record Video - Studio" }}>
-	<style is:global>
-		#main-header {
-			margin-bottom: 1.5rem !important;
-		}
-	</style>
-
+<PageLayout meta={{ title: "Record Video - Studio" }} wide={true}>
 	<div class="space-y-4 max-w-2xl mx-auto font-mono">
 		<LoomRecorder client:only="react" initialKey={effectiveKey} />
 	</div>
